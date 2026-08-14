@@ -12,17 +12,19 @@
     />
     <style>
       /* Hallmark · app-tool UI · genre: modern-minimal · tone: utilitarian-trust
-       * pre-emit critique: P4 H5 E4 S4 R5 V4
-       * Verde/rojo = veredicto; acento tinta para acciones. Tokens OKLCH, 2+1 fuentes.
+       * pre-emit critique: P4 H5 E4 S5 R5 V4
+       * Shell con sidebar (historial) + contenido (home: lanzar + qué comprueba + resultado).
        */
       :root {
         --paper: oklch(98.6% 0.004 95);
         --panel: oklch(100% 0 0);
         --panel-2: oklch(97% 0.004 95);
+        --side: oklch(96.5% 0.006 95);
         --ink: oklch(24% 0.012 265);
         --muted: oklch(54% 0.012 265);
         --faint: oklch(66% 0.01 265);
         --line: oklch(91% 0.005 265);
+        --line-2: oklch(88% 0.006 265);
         --accent: oklch(30% 0.02 265);
         --accent-h: oklch(38% 0.03 265);
         --focus: oklch(62% 0.14 250);
@@ -32,7 +34,6 @@
         --fail: oklch(55% 0.17 25);
         --fail-bg: oklch(96% 0.045 25);
         --warn: oklch(64% 0.12 70);
-        --warn-bg: oklch(96% 0.045 80);
 
         --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
         --font-body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -41,112 +42,130 @@
         --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-8: 48px;
         --radius: 12px;
         --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+        --sidebar-w: 288px;
       }
       * { box-sizing: border-box; }
       html, body { overflow-x: clip; }
-      body {
-        margin: 0; background: var(--paper); color: var(--ink);
-        font-family: var(--font-body); font-size: 15px; line-height: 1.5;
-        -webkit-font-smoothing: antialiased;
-      }
-      .wrap { max-width: 1000px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) var(--sp-8); }
+      body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+      h1, h2, h3, .display { font-family: var(--font-display); letter-spacing: -0.01em; }
 
-      /* Cabecera */
-      header { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-2); }
-      .mark { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; align-self: center; }
-      .mark::after { content: ''; width: 10px; height: 10px; border-radius: 3px; border: 2px solid var(--paper); }
-      h1 { font-family: var(--font-display); font-weight: 700; font-size: 24px; letter-spacing: -0.01em; margin: 0; }
-      .sub { color: var(--muted); margin: 0 0 var(--sp-5); font-size: 14.5px; }
-
-      /* Barra de lanzamiento */
-      .runbar { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; margin-bottom: var(--sp-5); }
-      button {
-        font: inherit; font-weight: 600; border: 1px solid transparent; border-radius: 10px;
-        padding: 11px 18px; cursor: pointer; transition: background 140ms var(--ease-out), transform 80ms var(--ease-out);
+      /* Shell */
+      .app { display: flex; min-height: 100vh; align-items: stretch; }
+      .sidebar { width: var(--sidebar-w); flex: none; background: var(--side); border-right: 1px solid var(--line); padding: var(--sp-5) var(--sp-4); position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+      .main { flex: 1; min-width: 0; padding: var(--sp-6) var(--sp-6) var(--sp-8); }
+      .content { max-width: 760px; margin: 0 auto; }
+      @media (max-width: 860px) {
+        .app { flex-direction: column; }
+        .sidebar { width: auto; height: auto; position: static; border-right: 0; border-bottom: 1px solid var(--line); order: 2; }
+        .main { order: 1; padding: var(--sp-5) var(--sp-4) var(--sp-6); }
       }
-      .btn { background: var(--accent); color: var(--paper); }
-      .btn:hover, .btn.is-hover { background: var(--accent-h); }
-      .btn:active, .btn.is-active { transform: translateY(1px); }
-      .btn.ghost { background: var(--panel); color: var(--ink); border-color: var(--line); }
+
+      /* Brand */
+      .brand { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-5); }
+      .mark { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; flex: none; }
+      .mark::after { content: ''; width: 10px; height: 10px; border-radius: 3px; border: 2px solid var(--side); }
+      .brand b { font-family: var(--font-display); font-weight: 700; font-size: 15px; }
+
+      /* Sidebar / historial */
+      .side-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); font-weight: 600; margin: 0 0 var(--sp-2); font-family: var(--font-display); }
+      .hist { display: flex; flex-direction: column; gap: 2px; }
+      .hist .empty { color: var(--muted); font-size: 13px; padding: var(--sp-2) 0; }
+      .hrow { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-2); border: 0; background: none; width: 100%; text-align: left; cursor: pointer; border-radius: 9px; font: inherit; color: inherit; }
+      .hrow:hover { background: var(--panel); }
+      .hrow.active { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line-2); }
+      .dot { flex: none; width: 8px; height: 8px; border-radius: 999px; }
+      .dot.ok { background: var(--ok); } .dot.fail { background: var(--fail); }
+      .hrow .h-store { font-weight: 600; font-size: 13.5px; }
+      .hrow .h-meta { margin-left: auto; text-align: right; font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .hrow .h-score { font-family: var(--font-mono); font-weight: 600; }
+      .hrow .h-score.ok { color: var(--ok); } .hrow .h-score.fail { color: var(--fail); }
+
+      /* Home */
+      h1 { font-size: 26px; font-weight: 700; margin: 0 0 var(--sp-2); }
+      .lead { color: var(--muted); font-size: 15.5px; margin: 0 0 var(--sp-5); max-width: 60ch; }
+      .section-h { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); font-weight: 600; margin: var(--sp-6) 0 var(--sp-3); }
+
+      /* Lanzar: tarjetas de tienda */
+      .launch { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+      @media (max-width: 520px) { .launch { grid-template-columns: 1fr; } }
+      .store-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+      .store-card .sc-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
+      .store-card .sc-name { font-family: var(--font-display); font-weight: 600; font-size: 16px; }
+      .store-card .sc-url { font-family: var(--font-mono); font-size: 11.5px; color: var(--faint); }
+      button { font: inherit; font-weight: 600; border: 1px solid transparent; border-radius: 10px; padding: 10px 16px; cursor: pointer; transition: background 140ms var(--ease-out), transform 80ms var(--ease-out); }
+      .btn { background: var(--accent); color: var(--paper); width: 100%; }
+      .btn:hover { background: var(--accent-h); }
+      .btn:active { transform: translateY(1px); }
+      .btn.ghost { background: var(--panel); color: var(--ink); border-color: var(--line-2); width: auto; }
       .btn.ghost:hover { background: var(--panel-2); }
       button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
       button:disabled { opacity: 0.5; cursor: default; transform: none; }
-      .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.75s linear infinite; vertical-align: -2px; margin-right: 7px; }
+      .all-row { margin-top: var(--sp-3); display: flex; align-items: center; gap: var(--sp-3); }
+      .pw input { font: inherit; padding: 9px 12px; border: 1px solid var(--line-2); border-radius: 10px; width: 180px; background: var(--panel); color: var(--ink); }
+      .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.75s linear infinite; vertical-align: -2px; margin-right: 7px; }
       @keyframes spin { to { transform: rotate(360deg); } }
-      .pw input { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; width: 200px; background: var(--panel); color: var(--ink); }
-      .pw input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
-      /* Rejilla: resultados + historial */
-      .grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: var(--sp-5); align-items: start; }
-      @media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+      /* Qué comprueba */
+      .about { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+      @media (max-width: 520px) { .about { grid-template-columns: 1fr; } }
+      .about-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-4); }
+      .about-card h3 { font-size: 14px; font-weight: 600; margin: 0 0 var(--sp-1); }
+      .about-card p { margin: 0; font-size: 13px; color: var(--muted); }
 
-      .col-title { font-family: var(--font-display); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); margin: 0 0 var(--sp-3); }
-
-      /* Tarjeta de resultado */
-      .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-5); margin-bottom: var(--sp-4); animation: rise 260ms var(--ease-out); }
+      /* Resultado */
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-5); margin-bottom: var(--sp-3); animation: rise 260ms var(--ease-out); }
       @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .card { animation: none; } .spin { animation-duration: 0s; } }
-      .card .rhead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+      .rhead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
       .store { font-family: var(--font-display); font-weight: 600; font-size: 17px; }
       .store .url { font-family: var(--font-mono); font-size: 12px; color: var(--faint); font-weight: 400; margin-left: var(--sp-2); }
-      .verdict { font-family: var(--font-display); font-weight: 700; font-size: 13px; letter-spacing: 0.02em; padding: 6px 12px; border-radius: 999px; white-space: nowrap; }
+      .verdict { font-family: var(--font-display); font-weight: 700; font-size: 13px; padding: 6px 12px; border-radius: 999px; white-space: nowrap; }
       .verdict.ok { color: var(--ok); background: var(--ok-bg); }
       .verdict.fail { color: var(--fail); background: var(--fail-bg); }
       .verdict.run { color: var(--accent); background: var(--panel-2); }
       .when { color: var(--faint); font-size: 12.5px; margin-top: var(--sp-1); font-variant-numeric: tabular-nums; }
-
       .grp { margin-top: var(--sp-4); }
-      .grp h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint); margin: 0 0 var(--sp-1); }
+      .grp h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint); margin: 0 0 var(--sp-1); font-family: var(--font-display); font-weight: 600; }
       .item { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: 1px solid var(--line); }
       .badge { flex: none; width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; margin-top: 1px; }
-      .badge.ok { background: var(--ok); } .badge.fail { background: var(--fail); }
-      .badge.info { background: var(--faint); } .badge.warn { background: var(--warn); }
+      .badge.ok { background: var(--ok); } .badge.fail { background: var(--fail); } .badge.info { background: var(--faint); } .badge.warn { background: var(--warn); }
       .item .txt { flex: 1; min-width: 0; }
       .item .lbl { font-weight: 600; font-size: 14px; }
       .item .det { color: var(--muted); font-size: 12.5px; margin-top: 1px; overflow-wrap: anywhere; }
-      .item a.shot { font-size: 12px; color: var(--accent); text-decoration: none; align-self: center; flex: none; border: 1px solid var(--line); padding: 3px 9px; border-radius: 8px; }
+      .item a.shot { font-size: 12px; color: var(--accent); text-decoration: none; align-self: center; flex: none; border: 1px solid var(--line-2); padding: 3px 9px; border-radius: 8px; }
       .item a.shot:hover { background: var(--panel-2); }
-
-      /* Historial */
-      .hist { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-      .hist .empty { padding: var(--sp-4); color: var(--muted); font-size: 13.5px; }
-      .hrow { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); cursor: pointer; background: none; border-left: 0; border-right: 0; border-bottom: 0; width: 100%; text-align: left; border-radius: 0; }
-      .hrow:first-child { border-top: 0; }
-      .hrow:hover { background: var(--panel-2); }
-      .dot { flex: none; width: 9px; height: 9px; border-radius: 999px; }
-      .dot.ok { background: var(--ok); } .dot.fail { background: var(--fail); }
-      .hrow .h-store { font-weight: 600; font-size: 14px; }
-      .hrow .h-meta { color: var(--faint); font-size: 12px; margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-      .hrow .h-score { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
-      .hrow .h-score.ok { color: var(--ok); } .hrow .h-score.fail { color: var(--fail); }
-
       .err { color: var(--fail); }
-      .placeholder { color: var(--muted); font-size: 14px; padding: var(--sp-5); border: 1px dashed var(--line); border-radius: var(--radius); text-align: center; }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <header>
-        <span class="mark" aria-hidden="true"></span>
-        <h1>Test de tiendas</h1>
-      </header>
-      <p class="sub">Comprueba que las funcionalidades clave de las tiendas siguen funcionando. Lánzalo después de cada deploy.</p>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand"><span class="mark" aria-hidden="true"></span><b>Test de tiendas</b></div>
+        <p class="side-title">Historial</p>
+        <div class="hist" id="history"><div class="empty">Sin ejecuciones todavía.</div></div>
+      </aside>
 
-      <div class="runbar" id="runbar"></div>
-      <div class="pw runbar" id="pwBox" style="display:none; margin-top:-8px">
-        <input id="pw" type="password" placeholder="Contraseña" />
-      </div>
+      <main class="main">
+        <div class="content">
+          <h1>Validar las tiendas</h1>
+          <p class="lead">Comprueba en un minuto que las funcionalidades clave de las tiendas siguen funcionando. Lánzalo después de cada cambio o deploy.</p>
 
-      <div class="grid">
-        <section>
-          <h2 class="col-title">Resultado</h2>
-          <div id="results"><div class="placeholder">Pulsa una tienda para lanzar la validación.</div></div>
-        </section>
-        <section>
-          <h2 class="col-title">Historial</h2>
-          <div class="hist" id="history"><div class="empty">Sin ejecuciones todavía.</div></div>
-        </section>
-      </div>
+          <p class="section-h">Lanzar validación</p>
+          <div class="launch" id="launch"></div>
+          <div class="all-row" id="allRow"></div>
+          <div class="all-row pw" id="pwBox" style="display:none"><input id="pw" type="password" placeholder="Contraseña" /></div>
+
+          <div id="results"></div>
+
+          <p class="section-h">¿Qué comprueba?</p>
+          <div class="about">
+            <div class="about-card"><h3>Navegación</h3><p>La home, las colecciones y el mega-menú cargan y muestran productos.</p></div>
+            <div class="about-card"><h3>Producto y carrito</h3><p>Se abre una ficha, se puede añadir al carrito y se llega a la pantalla de pago (sin realizar ninguna compra).</p></div>
+            <div class="about-card"><h3>Buscador</h3><p>El buscador de la tienda devuelve resultados.</p></div>
+            <div class="about-card"><h3>Región</h3><p>La moneda y el idioma son los correctos de cada país (€/ES en Europa, $/EN en EE. UU.) y no hay errores graves.</p></div>
+          </div>
+        </div>
+      </main>
     </div>
 
     <script>
@@ -157,35 +176,36 @@
         const cfg = await fetch('/api/stores').then((r) => r.json());
         STORES = cfg.stores;
         if (cfg.needsPassword) $('#pwBox').style.display = 'flex';
-        const bar = $('#runbar');
-        bar.innerHTML = '';
+        const launch = $('#launch');
+        launch.innerHTML = '';
         for (const s of STORES) {
+          const c = document.createElement('div');
+          c.className = 'store-card';
+          c.innerHTML =
+            '<div class="sc-top"><span class="sc-name">' + s.name + '</span>' +
+            '<span class="sc-url">' + s.baseUrl.replace(/^https?:\/\//, '') + '</span></div>';
           const b = document.createElement('button');
-          b.className = 'btn';
-          b.dataset.store = s.id;
-          b.textContent = 'Probar ' + s.name;
+          b.className = 'btn'; b.dataset.store = s.id; b.textContent = 'Probar';
           b.onclick = () => run([s.id]);
-          bar.appendChild(b);
+          c.appendChild(b);
+          launch.appendChild(c);
         }
         if (STORES.length > 1) {
           const b = document.createElement('button');
-          b.className = 'btn ghost';
-          b.textContent = 'Probar todas';
+          b.className = 'btn ghost'; b.textContent = 'Probar todas';
           b.onclick = () => run(STORES.map((s) => s.id));
-          bar.appendChild(b);
+          $('#allRow').appendChild(b);
         }
-        if (STORES.length === 0) bar.innerHTML = '<p class="err">No hay tiendas configuradas (STORE_EU_URL / STORE_US_URL).</p>';
+        if (STORES.length === 0) launch.innerHTML = '<p class="err">No hay tiendas configuradas (STORE_EU_URL / STORE_US_URL).</p>';
         loadHistory();
       }
 
-      function setBusy(busy) {
-        document.querySelectorAll('#runbar button').forEach((b) => (b.disabled = busy));
-      }
+      function setBusy(b) { document.querySelectorAll('#launch button, #allRow button').forEach((x) => (x.disabled = b)); }
+      function storeName(id) { return (STORES.find((s) => s.id === id) || {}).name || id; }
 
       async function run(ids) {
         setBusy(true);
-        const cards = ids.map((id) => runningCard(id));
-        $('#results').innerHTML = cards.join('');
+        $('#results').innerHTML = ids.map(runningCard).join('');
         for (const id of ids) {
           try {
             const res = await fetch('/api/run', {
@@ -205,14 +225,10 @@
         loadHistory();
       }
 
-      function storeName(id) { return (STORES.find((s) => s.id === id) || {}).name || id; }
-
       function runningCard(id) {
-        return (
-          '<div class="card" id="run-' + id + '"><div class="rhead"><div class="store">' + storeName(id) +
+        return '<div class="card" id="run-' + id + '"><div class="rhead"><div class="store">' + storeName(id) +
           '</div><span class="verdict run"><span class="spin"></span>Probando…</span></div>' +
-          '<div class="when">Puede tardar ~25 s</div></div>'
-        );
+          '<div class="when">Puede tardar ~25 s</div></div>';
       }
 
       function card(d) {
@@ -224,7 +240,7 @@
           '<span class="verdict ' + (d.ok ? 'ok' : 'fail') + '">' + (d.ok ? 'TODO OK' : 'HAY FALLOS') + ' · ' + d.passed + '/' + d.total + '</span></div>' +
           '<div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s</div>';
         for (const [g, items] of Object.entries(groups)) {
-          h += '<div class="grp"><h3>' + g + '</h3>';
+          h += '<div class="grp"><h4>' + g + '</h4>';
           for (const it of items) {
             const info = it.level === 'info';
             const cls = info ? (it.ok ? 'info' : 'warn') : it.ok ? 'ok' : 'fail';
@@ -243,20 +259,21 @@
         const box = $('#history');
         if (!list.length) { box.innerHTML = '<div class="empty">Sin ejecuciones todavía.</div>'; return; }
         box.innerHTML = list
-          .map(
-            (h) =>
-              '<button class="hrow" onclick="showRun(\'' + h.runId + '\')">' +
-              '<span class="dot ' + (h.ok ? 'ok' : 'fail') + '"></span>' +
-              '<span class="h-store">' + h.storeName + '</span>' +
-              '<span class="h-meta"><span class="h-score ' + (h.ok ? 'ok' : 'fail') + '">' + h.passed + '/' + h.total + '</span> · ' + ago(h.startedAt) + '</span>' +
-              '</button>',
-          )
+          .map((h) =>
+            '<button class="hrow" data-run="' + h.runId + '" onclick="showRun(\'' + h.runId + '\', this)">' +
+            '<span class="dot ' + (h.ok ? 'ok' : 'fail') + '"></span>' +
+            '<span class="h-store">' + h.storeName + '</span>' +
+            '<span class="h-meta"><span class="h-score ' + (h.ok ? 'ok' : 'fail') + '">' + h.passed + '/' + h.total + '</span> · ' + ago(h.startedAt) + '</span>' +
+            '</button>')
           .join('');
       }
 
-      async function showRun(runId) {
+      async function showRun(runId, el) {
         const d = await fetch('/api/run/' + runId).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-        if (d) $('#results').innerHTML = card(d);
+        if (!d) return;
+        $('#results').innerHTML = card(d);
+        document.querySelectorAll('.hrow').forEach((x) => x.classList.toggle('active', x === el));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
       window.showRun = showRun;
 
