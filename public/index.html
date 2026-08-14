@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coolway · Test de tiendas</title>
+    <style>
+      :root {
+        --bg: #f6f5f2; --card: #fff; --ink: #1a1a1a; --muted: #6b7280; --line: #e6e3dd;
+        --ok: #15803d; --ok-bg: #dcfce7; --fail: #b91c1c; --fail-bg: #fee2e2; --accent: #3e6b57;
+        --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }
+      .wrap { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
+      h1 { font-size: 22px; margin: 0 0 4px; }
+      .sub { color: var(--muted); margin: 0 0 22px; font-size: 14px; }
+      .stores { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+      button {
+        font: inherit; font-weight: 600; border: none; border-radius: 10px; padding: 12px 18px;
+        background: var(--accent); color: #fff; cursor: pointer;
+      }
+      button.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+      button:disabled { opacity: .55; cursor: default; }
+      .pw { margin: 8px 0 18px; }
+      .pw input { font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; width: 240px; }
+      .result { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-top: 18px; }
+      .rhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+      .verdict { font-size: 18px; font-weight: 700; padding: 4px 12px; border-radius: 999px; }
+      .verdict.ok { color: var(--ok); background: var(--ok-bg); }
+      .verdict.fail { color: var(--fail); background: var(--fail-bg); }
+      .meta { color: var(--muted); font-size: 13px; }
+      .group { margin-top: 16px; }
+      .group h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 8px; }
+      .item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+      .badge { flex-shrink: 0; width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #fff; }
+      .badge.ok { background: var(--ok); } .badge.fail { background: var(--fail); }
+      .badge.info { background: #94a3b8; } .badge.warn { background: #d97706; }
+      .item .txt { flex: 1; }
+      .item .lbl { font-weight: 600; }
+      .item .det { color: var(--muted); font-size: 13px; margin-top: 2px; }
+      .item a.shot { font-size: 12px; color: var(--accent); text-decoration: none; align-self: center; }
+      .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 8px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .err { color: var(--fail); margin-top: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Test de tiendas Coolway</h1>
+      <p class="sub">Comprueba que las funcionalidades clave siguen funcionando. Lánzalo después de un deploy.</p>
+
+      <div class="pw" id="pwBox" style="display:none">
+        <label>Contraseña &nbsp;<input id="pw" type="password" placeholder="…" /></label>
+      </div>
+
+      <div class="stores" id="stores"></div>
+      <div id="results"></div>
+    </div>
+
+    <script>
+      const $ = (s) => document.querySelector(s);
+      let STORES = [];
+
+      async function load() {
+        const r = await fetch('/api/stores').then((r) => r.json());
+        STORES = r.stores;
+        if (r.needsPassword) $('#pwBox').style.display = 'block';
+        const box = $('#stores');
+        box.innerHTML = '';
+        for (const s of STORES) {
+          const b = document.createElement('button');
+          b.textContent = 'Probar ' + s.name;
+          b.onclick = () => run([s.id]);
+          box.appendChild(b);
+        }
+        if (STORES.length > 1) {
+          const b = document.createElement('button');
+          b.className = 'ghost';
+          b.textContent = 'Probar todas';
+          b.onclick = () => run(STORES.map((s) => s.id));
+          box.appendChild(b);
+        }
+        if (STORES.length === 0) {
+          box.innerHTML = '<p class="err">No hay tiendas configuradas (falta STORE_EU_URL / STORE_US_URL).</p>';
+        }
+      }
+
+      function setBusy(busy) {
+        document.querySelectorAll('#stores button').forEach((b) => (b.disabled = busy));
+      }
+
+      async function run(ids) {
+        setBusy(true);
+        $('#results').innerHTML = '<div class="result"><span class="spinner"></span>Probando… (puede tardar ~1 min por tienda)</div>';
+        const out = [];
+        for (const id of ids) {
+          try {
+            const res = await fetch('/api/run', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-smoke-password': $('#pw')?.value || '' },
+              body: JSON.stringify({ store: id }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || res.statusText);
+            out.push(render(data));
+          } catch (e) {
+            out.push('<div class="result"><p class="err">Error probando ' + id + ': ' + e.message + '</p></div>');
+          }
+          $('#results').innerHTML = out.join('');
+        }
+        setBusy(false);
+      }
+
+      function render(d) {
+        const groups = {};
+        for (const it of d.items) (groups[it.group] ||= []).push(it);
+        const when = new Date(d.startedAt).toLocaleString('es-ES');
+        let html = '<div class="result"><div class="rhead">';
+        html += '<div><strong>' + d.storeName + '</strong> <span class="meta">' + d.baseUrl + '</span></div>';
+        html += '<span class="verdict ' + (d.ok ? 'ok' : 'fail') + '">' + (d.ok ? 'TODO OK' : 'HAY FALLOS') + ' · ' + d.passed + '/' + d.total + '</span>';
+        html += '</div><div class="meta">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + 's</div>';
+        for (const [g, items] of Object.entries(groups)) {
+          html += '<div class="group"><h3>' + g + '</h3>';
+          for (const it of items) {
+            const isInfo = it.level === 'info';
+            const bcls = isInfo ? (it.ok ? 'info' : 'warn') : (it.ok ? 'ok' : 'fail');
+            const sym = isInfo ? (it.ok ? 'i' : '!') : (it.ok ? '✓' : '✗');
+            html += '<div class="item"><div class="badge ' + bcls + '">' + sym + '</div>';
+            html += '<div class="txt"><div class="lbl">' + it.label + '</div><div class="det">' + it.detail + '</div></div>';
+            if (it.shot) html += '<a class="shot" href="/runs/' + it.shot + '" target="_blank">ver captura</a>';
+            html += '</div>';
+          }
+          html += '</div>';
+        }
+        html += '</div>';
+        return html;
+      }
+
+      load();
+    </script>
+  </body>
+</html>
