@@ -5,8 +5,9 @@ FROM mcr.microsoft.com/playwright:v1.48.0-jammy
 WORKDIR /app
 
 # Instala dependencias (incluye tsx para ejecutar TS sin build).
-COPY package.json ./
-RUN npm install
+# Copia el lockfile para un install reproducible.
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 

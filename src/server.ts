@@ -3,14 +3,23 @@ import express from 'express';
 import path from 'node:path';
 import { stores, storeById } from './stores';
 import { getRun, history, runStore } from './runner';
+import { storage } from './storage';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 8080);
 const PASSWORD = (process.env.SMOKE_PASSWORD ?? '').trim();
 
 app.use(express.json());
-// Capturas de cada ejecución.
-app.use('/runs', express.static(path.resolve('runs')));
+// Capturas de cada ejecución, servidas desde el almacenamiento (disco o DO Spaces).
+app.get('/runs/:runId/:file', async (req, res) => {
+  const { runId, file } = req.params;
+  if (!/^[a-z]+-\d+$/.test(runId) || !/^[a-z0-9-]+\.png$/.test(file)) {
+    return res.status(400).end();
+  }
+  const img = await storage.getImage(`${runId}/${file}`);
+  if (!img) return res.status(404).end();
+  res.type('png').set('Cache-Control', 'public, max-age=31536000, immutable').send(img);
+});
 // UI para Catalina.
 app.use(express.static(path.resolve('public')));
 
@@ -54,4 +63,5 @@ app.listen(PORT, () => {
   const list = stores().map((s) => `${s.name} (${s.baseUrl})`).join(', ') || '(ninguna configurada)';
   console.log(`coolway-smoke escuchando en http://localhost:${PORT}`);
   console.log(`Tiendas: ${list}`);
+  console.log(`Historial: ${storage.describe()}`);
 });

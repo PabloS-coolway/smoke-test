@@ -16,6 +16,8 @@ export interface CheckCtx {
 export interface Check {
   group: string;
   label: string;
+  /** Descripción breve, en lenguaje llano, de qué comprueba este test (se muestra en el informe). */
+  desc: string;
   run: (c: CheckCtx) => Promise<{ ok: boolean; detail: string }>;
 }
 
@@ -123,6 +125,7 @@ export const checks: Check[] = [
   {
     group: 'Navegación',
     label: 'La home carga',
+    desc: 'Abre la página de inicio de la tienda y confirma que responde correctamente y muestra la cabecera.',
     run: async ({ page, store }) => {
       const resp = await nav(page, store.baseUrl);
       await dismissPopups(page);
@@ -134,6 +137,7 @@ export const checks: Check[] = [
   {
     group: 'Navegación',
     label: 'La colección carga con productos',
+    desc: 'Entra en el listado de todos los productos y verifica que aparecen artículos enlazados.',
     run: async ({ page, store }) => {
       await nav(page, `${store.baseUrl}/collections/all`);
       await dismissPopups(page);
@@ -144,6 +148,7 @@ export const checks: Check[] = [
   {
     group: 'Navegación',
     label: 'El mega-menú abre',
+    desc: 'Pasa el ratón por el menú principal y comprueba que se despliega mostrando sus categorías.',
     run: async ({ page, store }) => {
       await nav(page, store.baseUrl);
       await dismissPopups(page);
@@ -175,6 +180,7 @@ export const checks: Check[] = [
   {
     group: 'PDP + carrito',
     label: 'La ficha de producto carga',
+    desc: 'Abre la página de un producto real y confirma que tiene su botón de añadir al carrito.',
     run: async ({ page, store }) => {
       await nav(page, `${store.baseUrl}/collections/all`);
       await dismissPopups(page);
@@ -192,6 +198,7 @@ export const checks: Check[] = [
   {
     group: 'PDP + carrito',
     label: 'Añadir al carrito funciona',
+    desc: 'Pulsa «añadir al carrito» y verifica que el número de artículos del carrito aumenta.',
     run: async ({ page, store }) => {
       let addBtn = await findAddToCart(page, store);
       if (!addBtn) {
@@ -214,6 +221,7 @@ export const checks: Check[] = [
   {
     group: 'PDP + carrito',
     label: 'El checkout es alcanzable',
+    desc: 'Abre el carrito y confirma que aparece la línea de producto y el botón de pago (sin llegar a comprar).',
     run: async ({ page, store }) => {
       // Con el producto en el carrito, la página /cart debe mostrar la línea y el botón de pago.
       // NO se coloca ningún pedido (no entramos al checkout externo).
@@ -236,6 +244,7 @@ export const checks: Check[] = [
   {
     group: 'Buscador',
     label: 'El buscador devuelve resultados',
+    desc: 'Busca un término habitual en la tienda y comprueba que devuelve productos.',
     run: async ({ page, store }) => {
       await nav(page, `${store.baseUrl}/search?q=${encodeURIComponent(store.searchTerm)}`);
       await dismissPopups(page);
@@ -246,6 +255,7 @@ export const checks: Check[] = [
   {
     group: 'Región',
     label: 'Moneda e idioma correctos',
+    desc: 'Comprueba que la tienda muestra el idioma y la moneda que corresponden a su país.',
     run: async ({ page, store }) => {
       const lang = (await page.locator('html').getAttribute('lang')) ?? '';
       const body = await page.locator('body').innerText().catch(() => '');

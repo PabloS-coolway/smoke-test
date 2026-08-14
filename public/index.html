@@ -116,6 +116,8 @@
       .badge { flex: none; width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; margin-top: 1px; }
       .badge.ok { background: var(--ok); } .badge.fail { background: var(--fail); } .badge.info { background: var(--faint); } .badge.warn { background: var(--warn); }
       .item .txt { flex: 1; min-width: 0; } .item .lbl { font-weight: 600; font-size: 14px; } .item .det { color: var(--muted); font-size: 12.5px; margin-top: 1px; overflow-wrap: anywhere; }
+      .item .desc { color: var(--faint); font-size: 12.5px; margin-top: 2px; }
+      .item .det { font-family: var(--font-mono); font-size: 11.5px; }
       .item a.shot { font-size: 12px; color: var(--accent); text-decoration: none; align-self: center; flex: none; border: 1px solid var(--line-2); padding: 3px 9px; border-radius: 8px; }
       .item a.shot:hover { background: var(--panel-2); }
       .err { color: var(--fail); }
@@ -239,7 +241,8 @@
             const info = it.level === 'info';
             const cls = info ? (it.ok ? 'info' : 'warn') : it.ok ? 'ok' : 'fail';
             const sym = info ? (it.ok ? 'i' : '!') : it.ok ? '✓' : '✗';
-            h += '<div class="item"><div class="badge ' + cls + '">' + sym + '</div><div class="txt"><div class="lbl">' + it.label + '</div><div class="det">' + it.detail + '</div></div>' + (it.shot ? '<a class="shot" href="/runs/' + it.shot + '" target="_blank">captura</a>' : '') + '</div>';
+            const desc = it.desc ? '<div class="desc">' + it.desc + '</div>' : '';
+            h += '<div class="item"><div class="badge ' + cls + '">' + sym + '</div><div class="txt"><div class="lbl">' + it.label + '</div>' + desc + '<div class="det">' + it.detail + '</div></div>' + (it.shot ? '<a class="shot" href="/runs/' + it.shot + '" target="_blank">captura</a>' : '') + '</div>';
           }
           h += '</div>';
         }

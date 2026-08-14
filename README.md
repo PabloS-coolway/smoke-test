@@ -29,19 +29,44 @@ npm run dev                   # http://localhost:8080
 También por terminal (para automatizar): `npm run cli` (todas) o `npm run cli -- eu` (una). Sale con
 código ≠ 0 si algo falla — útil para engancharlo a un pipeline post-deploy.
 
+## Historial duradero (importante)
+
+Cada validación se guarda (informe + capturas) y aparece en la pestaña **Historial**. Hay dos backends,
+que se eligen solos según el entorno:
+
+- **Disco** (por defecto, solo desarrollo): guarda en `runs/`.
+- **DO Spaces** (producción): guarda en un bucket S3-compatible. **Úsalo en DigitalOcean**, porque el
+  disco de App Platform es **efímero** (se borra en cada redeploy) y el historial se perdería.
+
+Para activar Spaces basta con definir `SPACES_KEY`, `SPACES_SECRET`, `SPACES_BUCKET` y `SPACES_ENDPOINT`
+(ver `.env.example`). Si no están, cae a disco. Al arrancar, el log dice cuál está usando.
+
 ## Desplegar en DigitalOcean
 
-Trae **Dockerfile** (imagen oficial de Playwright, con los navegadores dentro).
+Trae **Dockerfile** (imagen oficial de Playwright, con los navegadores dentro) y un **App Spec** en
+[`.do/app.yaml`](.do/app.yaml).
 
-**App Platform** (recomendado): crea una app desde este repo de GitHub, tipo **Dockerfile**, y define
-las variables de entorno:
+**Pasos (una vez):**
 
-- `STORE_EU_URL` — home de la tienda EU (p. ej. `https://www.coolway.com`).
-- `STORE_US_URL` — home de la tienda US.
+1. **Crea un Space** en DO (Storage > Spaces; p. ej. región `fra1`, nombre `coolway-smoke`) y una
+   **Access Key** en *API > Spaces Keys*. Apunta key y secret.
+2. **Sube este repo a GitHub** y en `.do/app.yaml` ajusta `github.repo` al owner real.
+3. **Crea la app**: DO > Apps > *Create App* → importa `.do/app.yaml` (o `doctl apps create --spec .do/app.yaml`),
+   tipo **Dockerfile**.
+4. **Rellena los secretos** en el panel de DO (no en el YAML): `SPACES_KEY`, `SPACES_SECRET` y, si quieres,
+   `SMOKE_PASSWORD`.
+
+Con `deploy_on_push: true`, cada push a `main` redespliega. El historial vive en Spaces, así que **sobrevive
+a los redeploys**.
+
+Variables de entorno (todas en `.env.example` / `.do/app.yaml`):
+
+- `STORE_EU_URL`, `STORE_US_URL` — homes de las tiendas.
 - `SMOKE_PASSWORD` — (opcional) si se pone, la UI la pide antes de lanzar.
+- `SPACES_KEY`, `SPACES_SECRET`, `SPACES_BUCKET`, `SPACES_ENDPOINT`, `SPACES_REGION`, `SPACES_PREFIX` — historial duradero.
 - `PORT` — `8080` (por defecto).
 
-Puerto HTTP: **8080**. La app sirve la UI en `/` y la API en `/api`.
+Puerto HTTP: **8080**. La app sirve la UI en `/`, la API en `/api` y las capturas en `/runs`.
 
 ## Añadir tiendas / afinar
 

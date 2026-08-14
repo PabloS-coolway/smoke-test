@@ -1,12 +1,13 @@
 import { chromium } from 'playwright';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { checks } from './checks';
+import { storage } from './storage';
 import type { StoreConfig } from './stores';
 
 export interface ResultItem {
   group: string;
   label: string;
+  /** Descripción breve de qué comprueba este test (en lenguaje llano). */
+  desc: string;
   ok: boolean;
   detail: string;
   shot: string | null; // ruta relativa a /runs, para servir la captura
@@ -27,8 +28,7 @@ export interface RunResult {
   items: ResultItem[];
 }
 
-const RUNS_DIR = path.resolve('runs');
-const INDEX = path.join(RUNS_DIR, 'index.json');
+const INDEX = 'index.json';
 
 /** Fila del historial (resumen de cada ejecución guardada). */
 export interface RunSummary {
@@ -44,27 +44,19 @@ export interface RunSummary {
 
 /** Historial completo (más reciente primero). */
 export async function history(): Promise<RunSummary[]> {
-  try {
-    return JSON.parse(await readFile(INDEX, 'utf8')) as RunSummary[];
-  } catch {
-    return [];
-  }
+  return (await storage.getJson<RunSummary[]>(INDEX)) ?? [];
 }
 
 /** Informe completo de una ejecución pasada (por runId). */
 export async function getRun(runId: string): Promise<RunResult | null> {
   if (!/^[a-z]+-\d+$/.test(runId)) return null; // evita traversal
-  try {
-    return JSON.parse(await readFile(path.join(RUNS_DIR, runId, 'result.json'), 'utf8')) as RunResult;
-  } catch {
-    return null;
-  }
+  return storage.getJson<RunResult>(`${runId}/result.json`);
 }
 
 async function appendIndex(s: RunSummary): Promise<void> {
   const arr = await history();
   arr.unshift(s);
-  await writeFile(INDEX, JSON.stringify(arr.slice(0, 200), null, 2));
+  await storage.putJson(INDEX, arr.slice(0, 200));
 }
 
 /**
@@ -81,8 +73,6 @@ const IGNORE_JS = [
 /** Corre todos los checks contra una tienda y devuelve el informe (con capturas). */
 export async function runStore(store: StoreConfig): Promise<RunResult> {
   const runId = `${store.id}-${Date.now()}`;
-  const dir = path.join(RUNS_DIR, runId);
-  await mkdir(dir, { recursive: true });
   const started = Date.now();
 
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
@@ -112,12 +102,13 @@ export async function runStore(store: StoreConfig): Promise<RunResult> {
     let shot: string | null = null;
     try {
       const file = `${items.length}-${check.label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
-      await page.screenshot({ path: path.join(dir, file) });
+      const png = await page.screenshot();
+      await storage.putImage(`${runId}/${file}`, png);
       shot = `${runId}/${file}`;
     } catch {
       /* sin captura */
     }
-    items.push({ group: check.group, label: check.label, ok, detail, shot, level: 'check' });
+    items.push({ group: check.group, label: check.label, desc: check.desc, ok, detail, shot, level: 'check' });
   }
 
   // Informativo: errores de JS (no listados) capturados durante toda la ejecución. No cuenta para el
@@ -125,6 +116,7 @@ export async function runStore(store: StoreConfig): Promise<RunResult> {
   items.push({
     group: 'Región',
     label: 'Errores de JS en consola',
+    desc: 'Recoge los errores de JavaScript aparecidos durante la validación (informativo, no tumba el test).',
     ok: jsErrors.length === 0,
     detail: jsErrors.length ? `${jsErrors.length}: ${jsErrors.slice(0, 3).join(' | ')}` : 'ninguno',
     shot: null,
@@ -149,7 +141,7 @@ export async function runStore(store: StoreConfig): Promise<RunResult> {
     ok: passed === total,
     items,
   };
-  await writeFile(path.join(dir, 'result.json'), JSON.stringify(result, null, 2));
+  await storage.putJson(`${runId}/result.json`, result);
   // Guarda el resumen en el historial (cada ejecución queda registrada).
   await appendIndex({
     runId,
