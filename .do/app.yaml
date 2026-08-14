@@ -13,7 +13,7 @@ services:
   - name: web
     dockerfile_path: Dockerfile
     github:
-      repo: OWNER/coolway-smoke # <-- ajusta al owner real tras subir el repo
+      repo: PabloS-coolway/smoke-test
       branch: main
       deploy_on_push: true
     http_port: 8080
