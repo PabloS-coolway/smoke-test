@@ -33,7 +33,12 @@ const RUNS_DIR = path.resolve('runs');
  * Errores de JS conocidos y benignos (de librerías/terceros del tema) que NO deben pintar el test
  * en rojo. Se amplía según lo que aparezca en las tiendas reales. Solo fallan los NO listados.
  */
-const IGNORE_JS = ['assignedNodes', 'IntersectionObserver', "reading 'addEventListener'"];
+const IGNORE_JS = [
+  'assignedNodes',
+  'IntersectionObserver',
+  "reading 'addEventListener'",
+  'Failed to fetch', // fetch de trackers/terceros bloqueados en headless — benigno
+];
 
 /** Corre todos los checks contra una tienda y devuelve el informe (con capturas). */
 export async function runStore(store: StoreConfig): Promise<RunResult> {
