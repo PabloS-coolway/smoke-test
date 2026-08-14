@@ -4,96 +4,188 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Coolway · Test de tiendas</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      /* Hallmark · app-tool UI · genre: modern-minimal · tone: utilitarian-trust
+       * pre-emit critique: P4 H5 E4 S4 R5 V4
+       * Verde/rojo = veredicto; acento tinta para acciones. Tokens OKLCH, 2+1 fuentes.
+       */
       :root {
-        --bg: #f6f5f2; --card: #fff; --ink: #1a1a1a; --muted: #6b7280; --line: #e6e3dd;
-        --ok: #15803d; --ok-bg: #dcfce7; --fail: #b91c1c; --fail-bg: #fee2e2; --accent: #3e6b57;
-        --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        --paper: oklch(98.6% 0.004 95);
+        --panel: oklch(100% 0 0);
+        --panel-2: oklch(97% 0.004 95);
+        --ink: oklch(24% 0.012 265);
+        --muted: oklch(54% 0.012 265);
+        --faint: oklch(66% 0.01 265);
+        --line: oklch(91% 0.005 265);
+        --accent: oklch(30% 0.02 265);
+        --accent-h: oklch(38% 0.03 265);
+        --focus: oklch(62% 0.14 250);
+
+        --ok: oklch(53% 0.13 150);
+        --ok-bg: oklch(96% 0.035 150);
+        --fail: oklch(55% 0.17 25);
+        --fail-bg: oklch(96% 0.045 25);
+        --warn: oklch(64% 0.12 70);
+        --warn-bg: oklch(96% 0.045 80);
+
+        --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+        --font-body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+        --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-8: 48px;
+        --radius: 12px;
+        --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
       }
       * { box-sizing: border-box; }
-      body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }
-      .wrap { max-width: 860px; margin: 0 auto; padding: 28px 20px 60px; }
-      h1 { font-size: 22px; margin: 0 0 4px; }
-      .sub { color: var(--muted); margin: 0 0 22px; font-size: 14px; }
-      .stores { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
-      button {
-        font: inherit; font-weight: 600; border: none; border-radius: 10px; padding: 12px 18px;
-        background: var(--accent); color: #fff; cursor: pointer;
+      html, body { overflow-x: clip; }
+      body {
+        margin: 0; background: var(--paper); color: var(--ink);
+        font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
       }
-      button.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
-      button:disabled { opacity: .55; cursor: default; }
-      .pw { margin: 8px 0 18px; }
-      .pw input { font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; width: 240px; }
-      .result { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-top: 18px; }
-      .rhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-      .verdict { font-size: 18px; font-weight: 700; padding: 4px 12px; border-radius: 999px; }
+      .wrap { max-width: 1000px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) var(--sp-8); }
+
+      /* Cabecera */
+      header { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-2); }
+      .mark { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: grid; place-items: center; align-self: center; }
+      .mark::after { content: ''; width: 10px; height: 10px; border-radius: 3px; border: 2px solid var(--paper); }
+      h1 { font-family: var(--font-display); font-weight: 700; font-size: 24px; letter-spacing: -0.01em; margin: 0; }
+      .sub { color: var(--muted); margin: 0 0 var(--sp-5); font-size: 14.5px; }
+
+      /* Barra de lanzamiento */
+      .runbar { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; margin-bottom: var(--sp-5); }
+      button {
+        font: inherit; font-weight: 600; border: 1px solid transparent; border-radius: 10px;
+        padding: 11px 18px; cursor: pointer; transition: background 140ms var(--ease-out), transform 80ms var(--ease-out);
+      }
+      .btn { background: var(--accent); color: var(--paper); }
+      .btn:hover, .btn.is-hover { background: var(--accent-h); }
+      .btn:active, .btn.is-active { transform: translateY(1px); }
+      .btn.ghost { background: var(--panel); color: var(--ink); border-color: var(--line); }
+      .btn.ghost:hover { background: var(--panel-2); }
+      button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+      button:disabled { opacity: 0.5; cursor: default; transform: none; }
+      .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.75s linear infinite; vertical-align: -2px; margin-right: 7px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .pw input { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; width: 200px; background: var(--panel); color: var(--ink); }
+      .pw input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+      /* Rejilla: resultados + historial */
+      .grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: var(--sp-5); align-items: start; }
+      @media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+      .col-title { font-family: var(--font-display); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); margin: 0 0 var(--sp-3); }
+
+      /* Tarjeta de resultado */
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-5); margin-bottom: var(--sp-4); animation: rise 260ms var(--ease-out); }
+      @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+      @media (prefers-reduced-motion: reduce) { .card { animation: none; } .spin { animation-duration: 0s; } }
+      .card .rhead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+      .store { font-family: var(--font-display); font-weight: 600; font-size: 17px; }
+      .store .url { font-family: var(--font-mono); font-size: 12px; color: var(--faint); font-weight: 400; margin-left: var(--sp-2); }
+      .verdict { font-family: var(--font-display); font-weight: 700; font-size: 13px; letter-spacing: 0.02em; padding: 6px 12px; border-radius: 999px; white-space: nowrap; }
       .verdict.ok { color: var(--ok); background: var(--ok-bg); }
       .verdict.fail { color: var(--fail); background: var(--fail-bg); }
-      .meta { color: var(--muted); font-size: 13px; }
-      .group { margin-top: 16px; }
-      .group h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0 0 8px; }
-      .item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
-      .badge { flex-shrink: 0; width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #fff; }
+      .verdict.run { color: var(--accent); background: var(--panel-2); }
+      .when { color: var(--faint); font-size: 12.5px; margin-top: var(--sp-1); font-variant-numeric: tabular-nums; }
+
+      .grp { margin-top: var(--sp-4); }
+      .grp h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint); margin: 0 0 var(--sp-1); }
+      .item { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: 1px solid var(--line); }
+      .badge { flex: none; width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; margin-top: 1px; }
       .badge.ok { background: var(--ok); } .badge.fail { background: var(--fail); }
-      .badge.info { background: #94a3b8; } .badge.warn { background: #d97706; }
-      .item .txt { flex: 1; }
-      .item .lbl { font-weight: 600; }
-      .item .det { color: var(--muted); font-size: 13px; margin-top: 2px; }
-      .item a.shot { font-size: 12px; color: var(--accent); text-decoration: none; align-self: center; }
-      .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 8px; }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      .err { color: var(--fail); margin-top: 12px; }
+      .badge.info { background: var(--faint); } .badge.warn { background: var(--warn); }
+      .item .txt { flex: 1; min-width: 0; }
+      .item .lbl { font-weight: 600; font-size: 14px; }
+      .item .det { color: var(--muted); font-size: 12.5px; margin-top: 1px; overflow-wrap: anywhere; }
+      .item a.shot { font-size: 12px; color: var(--accent); text-decoration: none; align-self: center; flex: none; border: 1px solid var(--line); padding: 3px 9px; border-radius: 8px; }
+      .item a.shot:hover { background: var(--panel-2); }
+
+      /* Historial */
+      .hist { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+      .hist .empty { padding: var(--sp-4); color: var(--muted); font-size: 13.5px; }
+      .hrow { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); cursor: pointer; background: none; border-left: 0; border-right: 0; border-bottom: 0; width: 100%; text-align: left; border-radius: 0; }
+      .hrow:first-child { border-top: 0; }
+      .hrow:hover { background: var(--panel-2); }
+      .dot { flex: none; width: 9px; height: 9px; border-radius: 999px; }
+      .dot.ok { background: var(--ok); } .dot.fail { background: var(--fail); }
+      .hrow .h-store { font-weight: 600; font-size: 14px; }
+      .hrow .h-meta { color: var(--faint); font-size: 12px; margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .hrow .h-score { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+      .hrow .h-score.ok { color: var(--ok); } .hrow .h-score.fail { color: var(--fail); }
+
+      .err { color: var(--fail); }
+      .placeholder { color: var(--muted); font-size: 14px; padding: var(--sp-5); border: 1px dashed var(--line); border-radius: var(--radius); text-align: center; }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <h1>Test de tiendas Coolway</h1>
-      <p class="sub">Comprueba que las funcionalidades clave siguen funcionando. Lánzalo después de un deploy.</p>
+      <header>
+        <span class="mark" aria-hidden="true"></span>
+        <h1>Test de tiendas</h1>
+      </header>
+      <p class="sub">Comprueba que las funcionalidades clave de las tiendas siguen funcionando. Lánzalo después de cada deploy.</p>
 
-      <div class="pw" id="pwBox" style="display:none">
-        <label>Contraseña &nbsp;<input id="pw" type="password" placeholder="…" /></label>
+      <div class="runbar" id="runbar"></div>
+      <div class="pw runbar" id="pwBox" style="display:none; margin-top:-8px">
+        <input id="pw" type="password" placeholder="Contraseña" />
       </div>
 
-      <div class="stores" id="stores"></div>
-      <div id="results"></div>
+      <div class="grid">
+        <section>
+          <h2 class="col-title">Resultado</h2>
+          <div id="results"><div class="placeholder">Pulsa una tienda para lanzar la validación.</div></div>
+        </section>
+        <section>
+          <h2 class="col-title">Historial</h2>
+          <div class="hist" id="history"><div class="empty">Sin ejecuciones todavía.</div></div>
+        </section>
+      </div>
     </div>
 
     <script>
       const $ = (s) => document.querySelector(s);
       let STORES = [];
 
-      async function load() {
-        const r = await fetch('/api/stores').then((r) => r.json());
-        STORES = r.stores;
-        if (r.needsPassword) $('#pwBox').style.display = 'block';
-        const box = $('#stores');
-        box.innerHTML = '';
+      async function boot() {
+        const cfg = await fetch('/api/stores').then((r) => r.json());
+        STORES = cfg.stores;
+        if (cfg.needsPassword) $('#pwBox').style.display = 'flex';
+        const bar = $('#runbar');
+        bar.innerHTML = '';
         for (const s of STORES) {
           const b = document.createElement('button');
+          b.className = 'btn';
+          b.dataset.store = s.id;
           b.textContent = 'Probar ' + s.name;
           b.onclick = () => run([s.id]);
-          box.appendChild(b);
+          bar.appendChild(b);
         }
         if (STORES.length > 1) {
           const b = document.createElement('button');
-          b.className = 'ghost';
+          b.className = 'btn ghost';
           b.textContent = 'Probar todas';
           b.onclick = () => run(STORES.map((s) => s.id));
-          box.appendChild(b);
+          bar.appendChild(b);
         }
-        if (STORES.length === 0) {
-          box.innerHTML = '<p class="err">No hay tiendas configuradas (falta STORE_EU_URL / STORE_US_URL).</p>';
-        }
+        if (STORES.length === 0) bar.innerHTML = '<p class="err">No hay tiendas configuradas (STORE_EU_URL / STORE_US_URL).</p>';
+        loadHistory();
       }
 
       function setBusy(busy) {
-        document.querySelectorAll('#stores button').forEach((b) => (b.disabled = busy));
+        document.querySelectorAll('#runbar button').forEach((b) => (b.disabled = busy));
       }
 
       async function run(ids) {
         setBusy(true);
-        $('#results').innerHTML = '<div class="result"><span class="spinner"></span>Probando… (puede tardar ~1 min por tienda)</div>';
-        const out = [];
+        const cards = ids.map((id) => runningCard(id));
+        $('#results').innerHTML = cards.join('');
         for (const id of ids) {
           try {
             const res = await fetch('/api/run', {
@@ -103,41 +195,80 @@
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || res.statusText);
-            out.push(render(data));
+            document.getElementById('run-' + id).outerHTML = card(data);
           } catch (e) {
-            out.push('<div class="result"><p class="err">Error probando ' + id + ': ' + e.message + '</p></div>');
+            const el = document.getElementById('run-' + id);
+            if (el) el.outerHTML = '<div class="card"><p class="err">Error probando ' + id + ': ' + e.message + '</p></div>';
           }
-          $('#results').innerHTML = out.join('');
         }
         setBusy(false);
+        loadHistory();
       }
 
-      function render(d) {
+      function storeName(id) { return (STORES.find((s) => s.id === id) || {}).name || id; }
+
+      function runningCard(id) {
+        return (
+          '<div class="card" id="run-' + id + '"><div class="rhead"><div class="store">' + storeName(id) +
+          '</div><span class="verdict run"><span class="spin"></span>Probando…</span></div>' +
+          '<div class="when">Puede tardar ~25 s</div></div>'
+        );
+      }
+
+      function card(d) {
         const groups = {};
         for (const it of d.items) (groups[it.group] ||= []).push(it);
-        const when = new Date(d.startedAt).toLocaleString('es-ES');
-        let html = '<div class="result"><div class="rhead">';
-        html += '<div><strong>' + d.storeName + '</strong> <span class="meta">' + d.baseUrl + '</span></div>';
-        html += '<span class="verdict ' + (d.ok ? 'ok' : 'fail') + '">' + (d.ok ? 'TODO OK' : 'HAY FALLOS') + ' · ' + d.passed + '/' + d.total + '</span>';
-        html += '</div><div class="meta">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + 's</div>';
+        const when = new Date(d.startedAt).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        let h = '<div class="card"><div class="rhead"><div class="store">' + d.storeName +
+          '<span class="url">' + d.baseUrl.replace(/^https?:\/\//, '') + '</span></div>' +
+          '<span class="verdict ' + (d.ok ? 'ok' : 'fail') + '">' + (d.ok ? 'TODO OK' : 'HAY FALLOS') + ' · ' + d.passed + '/' + d.total + '</span></div>' +
+          '<div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s</div>';
         for (const [g, items] of Object.entries(groups)) {
-          html += '<div class="group"><h3>' + g + '</h3>';
+          h += '<div class="grp"><h3>' + g + '</h3>';
           for (const it of items) {
-            const isInfo = it.level === 'info';
-            const bcls = isInfo ? (it.ok ? 'info' : 'warn') : (it.ok ? 'ok' : 'fail');
-            const sym = isInfo ? (it.ok ? 'i' : '!') : (it.ok ? '✓' : '✗');
-            html += '<div class="item"><div class="badge ' + bcls + '">' + sym + '</div>';
-            html += '<div class="txt"><div class="lbl">' + it.label + '</div><div class="det">' + it.detail + '</div></div>';
-            if (it.shot) html += '<a class="shot" href="/runs/' + it.shot + '" target="_blank">ver captura</a>';
-            html += '</div>';
+            const info = it.level === 'info';
+            const cls = info ? (it.ok ? 'info' : 'warn') : it.ok ? 'ok' : 'fail';
+            const sym = info ? (it.ok ? 'i' : '!') : it.ok ? '✓' : '✗';
+            h += '<div class="item"><div class="badge ' + cls + '">' + sym + '</div>' +
+              '<div class="txt"><div class="lbl">' + it.label + '</div><div class="det">' + it.detail + '</div></div>' +
+              (it.shot ? '<a class="shot" href="/runs/' + it.shot + '" target="_blank">captura</a>' : '') + '</div>';
           }
-          html += '</div>';
+          h += '</div>';
         }
-        html += '</div>';
-        return html;
+        return h + '</div>';
       }
 
-      load();
+      async function loadHistory() {
+        const list = await fetch('/api/history').then((r) => r.json()).catch(() => []);
+        const box = $('#history');
+        if (!list.length) { box.innerHTML = '<div class="empty">Sin ejecuciones todavía.</div>'; return; }
+        box.innerHTML = list
+          .map(
+            (h) =>
+              '<button class="hrow" onclick="showRun(\'' + h.runId + '\')">' +
+              '<span class="dot ' + (h.ok ? 'ok' : 'fail') + '"></span>' +
+              '<span class="h-store">' + h.storeName + '</span>' +
+              '<span class="h-meta"><span class="h-score ' + (h.ok ? 'ok' : 'fail') + '">' + h.passed + '/' + h.total + '</span> · ' + ago(h.startedAt) + '</span>' +
+              '</button>',
+          )
+          .join('');
+      }
+
+      async function showRun(runId) {
+        const d = await fetch('/api/run/' + runId).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        if (d) $('#results').innerHTML = card(d);
+      }
+      window.showRun = showRun;
+
+      function ago(iso) {
+        const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+        if (s < 60) return 'hace ' + s + ' s';
+        if (s < 3600) return 'hace ' + Math.floor(s / 60) + ' min';
+        if (s < 86400) return 'hace ' + Math.floor(s / 3600) + ' h';
+        return new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+      }
+
+      boot();
     </script>
   </body>
 </html>

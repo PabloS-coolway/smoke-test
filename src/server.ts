@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { stores, storeById } from './stores';
-import { runStore } from './runner';
+import { getRun, history, runStore } from './runner';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 8080);
@@ -20,6 +20,18 @@ app.get('/api/stores', (_req, res) => {
     needsPassword: !!PASSWORD,
     stores: stores().map((s) => ({ id: s.id, name: s.name, baseUrl: s.baseUrl })),
   });
+});
+
+/** Historial de ejecuciones (resúmenes, más reciente primero). */
+app.get('/api/history', async (_req, res) => {
+  res.json(await history());
+});
+
+/** Informe completo de una ejecución pasada. */
+app.get('/api/run/:runId', async (req, res) => {
+  const r = await getRun(req.params.runId);
+  if (!r) return res.status(404).json({ error: 'No existe esa ejecución.' });
+  return res.json(r);
 });
 
 /** Lanza el smoke test de una tienda y devuelve el informe. */

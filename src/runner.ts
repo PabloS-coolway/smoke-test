@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { checks } from './checks';
 import type { StoreConfig } from './stores';
@@ -28,6 +28,44 @@ export interface RunResult {
 }
 
 const RUNS_DIR = path.resolve('runs');
+const INDEX = path.join(RUNS_DIR, 'index.json');
+
+/** Fila del historial (resumen de cada ejecución guardada). */
+export interface RunSummary {
+  runId: string;
+  store: string;
+  storeName: string;
+  startedAt: string;
+  durationMs: number;
+  passed: number;
+  total: number;
+  ok: boolean;
+}
+
+/** Historial completo (más reciente primero). */
+export async function history(): Promise<RunSummary[]> {
+  try {
+    return JSON.parse(await readFile(INDEX, 'utf8')) as RunSummary[];
+  } catch {
+    return [];
+  }
+}
+
+/** Informe completo de una ejecución pasada (por runId). */
+export async function getRun(runId: string): Promise<RunResult | null> {
+  if (!/^[a-z]+-\d+$/.test(runId)) return null; // evita traversal
+  try {
+    return JSON.parse(await readFile(path.join(RUNS_DIR, runId, 'result.json'), 'utf8')) as RunResult;
+  } catch {
+    return null;
+  }
+}
+
+async function appendIndex(s: RunSummary): Promise<void> {
+  const arr = await history();
+  arr.unshift(s);
+  await writeFile(INDEX, JSON.stringify(arr.slice(0, 200), null, 2));
+}
 
 /**
  * Errores de JS conocidos y benignos (de librerías/terceros del tema) que NO deben pintar el test
@@ -112,5 +150,16 @@ export async function runStore(store: StoreConfig): Promise<RunResult> {
     items,
   };
   await writeFile(path.join(dir, 'result.json'), JSON.stringify(result, null, 2));
+  // Guarda el resumen en el historial (cada ejecución queda registrada).
+  await appendIndex({
+    runId,
+    store: store.id,
+    storeName: store.name,
+    startedAt: result.startedAt,
+    durationMs: result.durationMs,
+    passed,
+    total,
+    ok: result.ok,
+  });
   return result;
 }
