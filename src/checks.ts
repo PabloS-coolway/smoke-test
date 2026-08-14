@@ -147,18 +147,29 @@ export const checks: Check[] = [
     run: async ({ page, store }) => {
       await nav(page, store.baseUrl);
       await dismissPopups(page);
-      let links = 0;
-      for (const label of store.navHover) {
+      const visibleCols = () => page.locator('a[href*="/collections/"]:visible').count();
+      const baseline = await visibleCols();
+      // Candidatos: etiquetas configuradas (case-insensitive) + los primeros ítems de la cabecera.
+      const targets: Locator[] = store.navHover.map((l) =>
+        page.getByText(new RegExp(`^\\s*${l}\\s*$`, 'i')).first(),
+      );
+      const navItems = page.locator('header a, header summary, header button, nav a, nav summary');
+      const n = Math.min(await navItems.count(), 6);
+      for (let i = 0; i < n; i++) targets.push(navItems.nth(i));
+
+      let best = baseline;
+      for (const t of targets) {
         try {
-          await page.getByText(label, { exact: true }).first().hover({ timeout: 3000 });
-          await page.waitForTimeout(600);
-          links = await page.locator('a[href*="/collections/"]:visible').count();
-          if (links > 3) break;
+          await t.hover({ timeout: 2000 });
+          await page.waitForTimeout(450);
+          best = Math.max(best, await visibleCols());
+          if (best > baseline + 3) break;
         } catch {
-          /* prueba la siguiente etiqueta */
+          /* prueba el siguiente */
         }
       }
-      return { ok: links > 3, detail: links ? `${links} enlaces de submenú visibles` : 'no se detectó submenú' };
+      const opened = best > baseline + 3;
+      return { ok: opened, detail: opened ? `${best} enlaces de submenú visibles` : `no se detectó submenú (base ${baseline})` };
     },
   },
   {
