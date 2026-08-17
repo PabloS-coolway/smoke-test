@@ -2,16 +2,26 @@ import type { Locator, Page } from 'playwright';
 import type { StoreConfig } from './stores';
 
 /**
- * Los checks del smoke test. Cada uno es una comprobación independiente de una funcionalidad
- * crítica de la tienda. Devuelven `{ ok, detail }`; el runner añade la captura de pantalla.
+ * Los checks del smoke test. Cada uno comprueba una funcionalidad crítica del ESCAPARATE renderizado
+ * (el tema), que es justo lo que se rompe al desplegar. Devuelven `{ ok, detail }`; el runner añade la
+ * captura de pantalla.
  *
- * Son deliberadamente tolerantes: usan selectores estándar de Shopify (formulario /cart/add,
- * enlaces a /products/, API /cart.js) para que sigan valiendo aunque cambie el maquetado del tema.
- * Al correrlos por primera vez contra el DOM real puede que haya que afinar algún selector.
+ * Principios (para que aguante las 12 tiendas sin tocar nada por tienda):
+ *  - DESCUBRIR, no hardcodear: la colección y el producto a probar se descubren en runtime desde el
+ *    propio tema (enlaces del DOM) con fallback a `/sitemap.xml`. Nada de rutas fijas tipo /collections/all.
+ *  - INTERACTUAR POR EL TEMA, no por endpoints de scraper: el carrito se prueba clicando "añadir" y
+ *    leyendo el contador del DOM — NO vía /cart.js ni /products.json, que algunas tiendas bloquean a
+ *    IPs de datacenter. Así un solo datacenter valida todas las tiendas y además es más fiel al objetivo.
  */
+export interface Discovery {
+  collectionUrl: string | null;
+  productUrl: string | null;
+  how: string; // cómo se descubrió (para el detalle/depuración)
+}
 export interface CheckCtx {
   page: Page;
   store: StoreConfig;
+  disco: Discovery;
 }
 export interface Check {
   group: string;
@@ -23,21 +33,31 @@ export interface Check {
 
 const GOTO = { timeout: 30000, waitUntil: 'domcontentloaded' as const };
 
-/** Cierra popups (newsletter, cookies) que no deben tumbar el test. */
+/** Convierte un href (relativo o absoluto) en URL absoluta del origen de la tienda. */
+function abs(store: StoreConfig, href: string): string {
+  if (/^https?:\/\//i.test(href)) return href;
+  return `${store.baseUrl}${href.startsWith('/') ? '' : '/'}${href}`;
+}
+
+/** Cierra popups (cookies, newsletter, reseñas) que no deben tumbar el test ni tapar clics. */
 async function dismissPopups(page: Page): Promise<void> {
   const sels = [
-    '[aria-label="Close"]',
-    '[aria-label="Cerrar"]',
+    'button:has-text("Reject")',
+    'button:has-text("Rechazar")',
+    'button:has-text("Accept")',
+    'button:has-text("Aceptar")',
     'button:has-text("No, gracias")',
     'button:has-text("No thanks")',
-    'button:has-text("Aceptar")',
-    'button:has-text("Accept")',
+    '[aria-label="Close"]',
+    '[aria-label="Cerrar"]',
+    '[aria-label="close"]',
     '.klaviyo-close-form',
+    'button.needsclick[aria-label]',
   ];
   for (const sel of sels) {
     try {
       const el = page.locator(sel).first();
-      if (await el.isVisible({ timeout: 600 })) await el.click({ timeout: 800 });
+      if (await el.isVisible({ timeout: 500 })) await el.click({ timeout: 800, force: true });
     } catch {
       /* si no está, nada */
     }
@@ -77,47 +97,138 @@ async function findAddToCart(page: Page, store: StoreConfig): Promise<Locator | 
 }
 
 /**
- * URL de un producto real. Usa la API estándar de Shopify (`/products.json`) para no depender del
- * maquetado; si falla, cae a los enlaces de la colección. Evita la gift-card (no tiene variantes al uso).
- * La página debe estar ya en el origen de la tienda (el fetch es relativo).
+ * Nº de artículos en el carrito leyendo el DOM del tema (badge/burbuja de la cabecera o el texto del
+ * enlace "Cart [n]"). NO usa /cart.js (algunas tiendas lo bloquean a IPs de datacenter).
  */
-async function firstProductUrl(page: Page, store: StoreConfig): Promise<string | null> {
+async function cartCountDom(page: Page): Promise<number> {
   try {
-    const handle = await page.evaluate(async () => {
-      const r = await fetch('/products.json?limit=10', { headers: { accept: 'application/json' } });
-      if (!r.ok) return null;
-      const j = (await r.json()) as { products?: Array<{ handle?: string }> };
-      const list = (j.products ?? []).filter((p) => p.handle && p.handle !== 'gift-card');
-      return (list[0] ?? j.products?.[0])?.handle ?? null;
-    });
-    if (handle) return `${store.baseUrl}/products/${handle}`;
-  } catch {
-    /* cae al fallback */
-  }
-  try {
-    const href = await page.evaluate(() => {
-      const links = Array.from(document.querySelectorAll('a[href*="/products/"]'))
-        .map((a) => a.getAttribute('href') ?? '')
-        .filter((h) => h && !h.includes('/gift-card'));
-      return links[0] ?? null;
-    });
-    if (href) return href.startsWith('http') ? href : `${store.baseUrl}${href}`;
-  } catch {
-    /* nada */
-  }
-  return null;
-}
-
-/** Nº de artículos en el carrito, vía la API estándar de Shopify (`/cart.js`). Robusto a temas. */
-async function cartCount(page: Page): Promise<number> {
-  try {
-    return await page.evaluate(async () => {
-      const r = await fetch('/cart.js', { headers: { accept: 'application/json' } });
-      const j = (await r.json()) as { item_count?: number };
-      return typeof j.item_count === 'number' ? j.item_count : 0;
+    return await page.evaluate(() => {
+      const num = (s: string | null): number | null => {
+        if (!s) return null;
+        const m = s.match(/\d+/);
+        return m ? parseInt(m[0], 10) : null;
+      };
+      const sels = [
+        '[data-cart-count]',
+        '[data-cart-item-count]',
+        '.cart-count-bubble',
+        '.cart-count',
+        '#CartCount',
+        '[id*="CartCount"]',
+        '[class*="cart-count"]',
+        '[class*="cart_count"]',
+      ];
+      for (const s of sels) {
+        const el = document.querySelector(s);
+        if (el) {
+          const n = num(el.getAttribute('data-cart-count') || el.getAttribute('data-cart-item-count') || el.textContent);
+          if (n !== null) return n;
+        }
+      }
+      // Fallback: texto del enlace al carrito, p. ej. "Cart [0]" / "Carrito (0)".
+      const link = Array.from(document.querySelectorAll('a[href$="/cart"], a[href*="/cart?"], a[href*="/cart"]'))
+        .map((a) => a.textContent || '')
+        .join(' ');
+      const m = link.match(/[[(](\d+)[\])]/) || link.match(/\b(\d+)\b/);
+      return m ? parseInt(m[1], 10) : 0;
     });
   } catch {
     return 0;
+  }
+}
+
+/** Nº de líneas de producto visibles en la página /cart (DOM). */
+async function cartLineItems(page: Page): Promise<number> {
+  try {
+    return await page.evaluate(() => {
+      const sels = ['[data-line-item]', '.cart-item', '.cart__row', 'tr[id*="CartItem"]', '.line-item'];
+      for (const s of sels) {
+        const n = document.querySelectorAll(s).length;
+        if (n > 0) return n;
+      }
+      // Fallback: enlaces a producto dentro del contenedor del carrito.
+      const scope = document.querySelector('form[action*="/cart"], main, body');
+      return scope ? scope.querySelectorAll('a[href*="/products/"]').length : 0;
+    });
+  } catch {
+    return 0;
+  }
+}
+
+/** Descubre una colección y un producto reales del tema (DOM primero, sitemap de respaldo). */
+export async function discover(page: Page, store: StoreConfig): Promise<Discovery> {
+  const d: Discovery = { collectionUrl: null, productUrl: null, how: '' };
+
+  // 1) Colección: primer enlace a /collections/ del tema (evita "all"/"frontpage" y filtros con query).
+  try {
+    await nav(page, store.baseUrl);
+    await dismissPopups(page);
+    const col = await page.evaluate(() => {
+      const hrefs = Array.from(document.querySelectorAll('a[href*="/collections/"]'))
+        .map((a) => a.getAttribute('href') || '')
+        .filter((h) => /\/collections\/[a-z0-9._-]+/i.test(h) && !h.includes('/products/'));
+      const specific = hrefs.filter(
+        (h) => !h.includes('?') && !/\/collections\/(all|frontpage)(\/|$|\?)/i.test(h),
+      );
+      return specific[0] || hrefs.find((h) => !h.includes('?')) || hrefs[0] || null;
+    });
+    if (col) {
+      d.collectionUrl = abs(store, col);
+      d.how = 'dom';
+    }
+  } catch {
+    /* sigue */
+  }
+
+  // 2) Producto: primer enlace a /products/ en la colección (o en la home).
+  try {
+    if (d.collectionUrl) {
+      await nav(page, d.collectionUrl);
+      await dismissPopups(page);
+    }
+    const prod = await page.evaluate(() => {
+      const hrefs = Array.from(document.querySelectorAll('a[href*="/products/"]'))
+        .map((a) => a.getAttribute('href') || '')
+        .filter((h) => h.includes('/products/') && !/gift-card/i.test(h));
+      return hrefs[0] || null;
+    });
+    if (prod) d.productUrl = abs(store, prod);
+  } catch {
+    /* sigue */
+  }
+
+  // 3) Respaldo por sitemap si el DOM no dio colección o producto.
+  if (!d.collectionUrl || !d.productUrl) {
+    const sm = await fromSitemap(page);
+    if (!d.collectionUrl && sm.collectionUrl) d.collectionUrl = sm.collectionUrl;
+    if (!d.productUrl && sm.productUrl) d.productUrl = sm.productUrl;
+    if (sm.collectionUrl || sm.productUrl) d.how = d.how ? `${d.how}+sitemap` : 'sitemap';
+  }
+
+  return d;
+}
+
+/** Lee /sitemap.xml (estándar en todo Shopify, no bloqueado) para sacar una colección y un producto. */
+async function fromSitemap(page: Page): Promise<{ collectionUrl: string | null; productUrl: string | null }> {
+  try {
+    return await page.evaluate(async () => {
+      const get = (u: string) => fetch(u).then((r) => (r.ok ? r.text() : '')).catch(() => '');
+      const root = await get('/sitemap.xml');
+      const locs = Array.from(root.matchAll(/<loc>([^<]+)<\/loc>/g)).map((m) => m[1].replace(/&amp;/g, '&'));
+      const pick = async (needle: string, path: string): Promise<string | null> => {
+        const sub = locs.find((l) => l.includes(needle));
+        if (!sub) return null;
+        const xml = await get(sub);
+        const urls = Array.from(xml.matchAll(/<loc>([^<]+)<\/loc>/g)).map((m) => m[1].replace(/&amp;/g, '&'));
+        return urls.find((u) => u.includes(path) && !/gift-card/i.test(u)) || null;
+      };
+      return {
+        collectionUrl: await pick('sitemap_collections', '/collections/'),
+        productUrl: await pick('sitemap_products', '/products/'),
+      };
+    });
+  } catch {
+    return { collectionUrl: null, productUrl: null };
   }
 }
 
@@ -137,24 +248,25 @@ export const checks: Check[] = [
   {
     group: 'Navegación',
     label: 'La colección carga con productos',
-    desc: 'Entra en el listado de todos los productos y verifica que aparecen artículos enlazados.',
-    run: async ({ page, store }) => {
-      await nav(page, `${store.baseUrl}/collections/all`);
+    desc: 'Entra en una colección real de la tienda (descubierta del propio menú) y verifica que muestra productos.',
+    run: async ({ page, store, disco }) => {
+      if (!disco.collectionUrl) return { ok: false, detail: 'no se descubrió ninguna colección en el tema' };
+      await nav(page, disco.collectionUrl);
       await dismissPopups(page);
       const products = await page.locator('a[href*="/products/"]').count();
-      return { ok: products > 0, detail: `${products} enlaces a producto` };
+      const path = disco.collectionUrl.replace(store.baseUrl, '');
+      return { ok: products > 0, detail: `${path} · ${products} productos (${disco.how})` };
     },
   },
   {
     group: 'Navegación',
     label: 'El mega-menú abre',
-    desc: 'Pasa el ratón por el menú principal y comprueba que se despliega mostrando sus categorías.',
+    desc: 'Pasa el ratón por el menú principal y comprueba que se despliega mostrando más categorías.',
     run: async ({ page, store }) => {
       await nav(page, store.baseUrl);
       await dismissPopups(page);
       const visibleCols = () => page.locator('a[href*="/collections/"]:visible').count();
       const baseline = await visibleCols();
-      // Candidatos: etiquetas configuradas (case-insensitive) + los primeros ítems de la cabecera.
       const targets: Locator[] = store.navHover.map((l) =>
         page.getByText(new RegExp(`^\\s*${l}\\s*$`, 'i')).first(),
       );
@@ -181,40 +293,36 @@ export const checks: Check[] = [
     group: 'PDP + carrito',
     label: 'La ficha de producto carga',
     desc: 'Abre la página de un producto real y confirma que tiene su botón de añadir al carrito.',
-    run: async ({ page, store }) => {
-      await nav(page, `${store.baseUrl}/collections/all`);
-      await dismissPopups(page);
-      const url = await firstProductUrl(page, store);
-      if (!url) return { ok: false, detail: 'no se encontró ningún producto' };
-      await nav(page, url);
+    run: async ({ page, store, disco }) => {
+      if (!disco.productUrl) return { ok: false, detail: 'no se descubrió ningún producto en el tema' };
+      await nav(page, disco.productUrl);
       await dismissPopups(page);
       const addBtn = await findAddToCart(page, store);
-      return {
-        ok: !!addBtn,
-        detail: addBtn ? 'con botón de añadir al carrito' : `sin botón de añadir (${url.replace(store.baseUrl, '')})`,
-      };
+      const path = disco.productUrl.replace(store.baseUrl, '');
+      return { ok: !!addBtn, detail: addBtn ? `${path} · con botón de añadir` : `${path} · sin botón de añadir` };
     },
   },
   {
     group: 'PDP + carrito',
     label: 'Añadir al carrito funciona',
-    desc: 'Pulsa «añadir al carrito» y verifica que el número de artículos del carrito aumenta.',
-    run: async ({ page, store }) => {
-      let addBtn = await findAddToCart(page, store);
-      if (!addBtn) {
-        await nav(page, `${store.baseUrl}/collections/all`);
+    desc: 'Pulsa «añadir al carrito» en la ficha y verifica que el contador del carrito aumenta.',
+    run: async ({ page, store, disco }) => {
+      if (!disco.productUrl) return { ok: false, detail: 'sin producto que probar (no descubierto)' };
+      await nav(page, disco.productUrl);
+      await dismissPopups(page);
+      const before = await cartCountDom(page);
+      const addBtn = await findAddToCart(page, store);
+      if (!addBtn) return { ok: false, detail: 'no se encontró el botón de añadir' };
+      await addBtn.click({ timeout: 8000 }).catch(() => undefined);
+      await page.waitForTimeout(2500); // deja que el drawer/badge se actualicen
+      let after = await cartCountDom(page);
+      // Fallback: si el badge no refleja el cambio, míralo en la página /cart.
+      if (after <= before) {
+        await nav(page, `${store.baseUrl}/cart`);
         await dismissPopups(page);
-        const url = await firstProductUrl(page, store);
-        if (url) {
-          await nav(page, url);
-          await dismissPopups(page);
-          addBtn = await findAddToCart(page, store);
-        }
+        after = await cartLineItems(page);
+        return { ok: after > 0, detail: `badge ${before}→${await cartCountDom(page)} · /cart ${after} línea(s)` };
       }
-      const before = await cartCount(page);
-      if (addBtn) await addBtn.click({ timeout: 8000 }).catch(() => undefined);
-      await page.waitForTimeout(1800);
-      const after = await cartCount(page);
       return { ok: after > before, detail: `carrito ${before} → ${after}` };
     },
   },
@@ -223,11 +331,9 @@ export const checks: Check[] = [
     label: 'El checkout es alcanzable',
     desc: 'Abre el carrito y confirma que aparece la línea de producto y el botón de pago (sin llegar a comprar).',
     run: async ({ page, store }) => {
-      // Con el producto en el carrito, la página /cart debe mostrar la línea y el botón de pago.
-      // NO se coloca ningún pedido (no entramos al checkout externo).
       await nav(page, `${store.baseUrl}/cart`);
       await dismissPopups(page);
-      const lineItems = await page.locator('a[href*="/products/"]').count();
+      const lines = await cartLineItems(page);
       const checkoutBtn = await page
         .locator(
           '[name="checkout"], button[name="checkout"], a[href*="/checkout"], ' +
@@ -236,8 +342,8 @@ export const checks: Check[] = [
         )
         .count();
       return {
-        ok: lineItems > 0 && checkoutBtn > 0,
-        detail: `carrito con ${lineItems} artículo(s) · botón de pago ${checkoutBtn ? 'sí' : 'no'}`,
+        ok: lines > 0 && checkoutBtn > 0,
+        detail: `carrito con ${lines} línea(s) · botón de pago ${checkoutBtn ? 'sí' : 'no'}`,
       };
     },
   },

@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { checks } from './checks';
+import { checks, discover } from './checks';
 import { storage } from './storage';
 import type { StoreConfig } from './stores';
 
@@ -87,12 +87,15 @@ export async function runStore(store: StoreConfig): Promise<RunResult> {
     if (!IGNORE_JS.some((s) => e.message.includes(s))) jsErrors.push(e.message);
   });
 
+  // Descubre una colección y un producto reales del tema una sola vez; los checks los reutilizan.
+  const disco = await discover(page, store).catch(() => ({ collectionUrl: null, productUrl: null, how: 'error' }));
+
   const items: ResultItem[] = [];
   for (const check of checks) {
     let ok = false;
     let detail = '';
     try {
-      const r = await check.run({ page, store });
+      const r = await check.run({ page, store, disco });
       ok = r.ok;
       detail = r.detail;
     } catch (e) {

@@ -121,16 +121,41 @@
       .item a.shot { font-size: 12px; color: var(--accent); text-decoration: none; align-self: center; flex: none; border: 1px solid var(--line-2); padding: 3px 9px; border-radius: 8px; }
       .item a.shot:hover { background: var(--panel-2); }
       .err { color: var(--fail); }
+
+      /* Login */
+      .login { position: fixed; inset: 0; display: grid; place-items: center; background: var(--paper); padding: var(--sp-4); z-index: 50; }
+      .login-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: var(--sp-6); width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: var(--sp-3); box-shadow: 0 12px 40px oklch(24% 0.012 265 / 0.08); text-align: center; }
+      .login-card .mark { width: 34px; height: 34px; border-radius: 9px; margin: 0 auto var(--sp-1); }
+      .login-card h1 { font-size: 20px; margin: 0; }
+      .login-lead { color: var(--muted); font-size: 14px; margin: 0 0 var(--sp-2); }
+      .login-card input { font: inherit; padding: 11px 13px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); color: var(--ink); text-align: center; }
+      .login-card .btn { width: 100%; padding: 11px; }
+      .login-err { color: var(--fail); font-size: 13px; min-height: 18px; margin: 0; }
+      .logout { position: absolute; bottom: var(--sp-4); left: var(--sp-3); right: var(--sp-3); width: calc(100% - var(--sp-3) * 2); font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: none; border: 1px solid var(--line-2); border-radius: 9px; padding: 8px; cursor: pointer; }
+      .logout:hover { background: var(--panel); color: var(--ink); }
+      @media (max-width: 860px) { .logout { position: static; width: auto; margin-top: var(--sp-3); } }
     </style>
   </head>
   <body>
-    <div class="app">
+    <div id="login" class="login" style="display:none">
+      <form class="login-card" id="loginForm">
+        <span class="mark" aria-hidden="true"></span>
+        <h1>Test de tiendas</h1>
+        <p class="login-lead">Introduce la contraseña para acceder.</p>
+        <input id="loginPw" type="password" placeholder="Contraseña" autocomplete="current-password" autofocus />
+        <button class="btn" type="submit">Entrar</button>
+        <p class="login-err" id="loginErr"></p>
+      </form>
+    </div>
+
+    <div class="app" id="app" style="display:none">
       <aside class="sidebar">
         <div class="brand"><span class="mark" aria-hidden="true"></span><b>Test de tiendas</b></div>
         <nav class="nav">
           <button class="nav-item active" data-view="lanzar"><span class="n-ico"></span>Lanzar validación</button>
           <button class="nav-item" data-view="historial"><span class="n-ico"></span>Historial<span class="n-count" id="histCount"></span></button>
         </nav>
+        <button id="logout" class="logout" style="display:none">Cerrar sesión</button>
       </aside>
 
       <main class="main">
@@ -142,7 +167,6 @@
 
             <p class="section-h">Lanzar validación</p>
             <div class="launch" id="launch"></div>
-            <div class="pw" id="pwBox" style="display:none"><input id="pw" type="password" placeholder="Contraseña" /></div>
 
             <div id="results"></div>
 
@@ -170,10 +194,37 @@
       const $ = (s) => document.querySelector(s);
       let STORES = [];
 
+      // Arranque: decide si mostrar el login o la app según la sesión.
+      async function init() {
+        let s = { needsLogin: false, authed: true };
+        try { s = await fetch('/api/session').then((r) => r.json()); } catch {}
+        if (s.needsLogin && !s.authed) return showLogin();
+        showApp();
+      }
+
+      function showLogin() {
+        $('#app').style.display = 'none';
+        $('#login').style.display = 'grid';
+        setTimeout(() => $('#loginPw')?.focus(), 50);
+      }
+      function showApp() {
+        $('#login').style.display = 'none';
+        $('#app').style.display = 'flex';
+        boot();
+      }
+
+      $('#loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        $('#loginErr').textContent = '';
+        const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('#loginPw').value }) });
+        if (res.ok) { $('#loginPw').value = ''; showApp(); }
+        else $('#loginErr').textContent = 'Contraseña incorrecta.';
+      });
+
       async function boot() {
         const cfg = await fetch('/api/stores').then((r) => r.json());
+        if (cfg.needsPassword) $('#logout').style.display = 'block';
         STORES = cfg.stores;
-        if (cfg.needsPassword) $('#pwBox').style.display = 'block';
         const launch = $('#launch');
         launch.innerHTML = '';
         for (const s of STORES) {
@@ -199,6 +250,11 @@
         loadHistory();
       }
 
+      $('#logout').addEventListener('click', async () => {
+        await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+        showLogin();
+      });
+
       function setView(v) {
         document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === v));
         document.querySelectorAll('.view').forEach((s) => s.classList.toggle('active', s.dataset.view === v));
@@ -213,7 +269,8 @@
         $('#results').innerHTML = ids.map(runningCard).join('');
         for (const id of ids) {
           try {
-            const res = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-smoke-password': $('#pw')?.value || '' }, body: JSON.stringify({ store: id }) });
+            const res = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store: id }) });
+            if (res.status === 401) { showLogin(); return; }
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || res.statusText);
             document.getElementById('run-' + id).outerHTML = card(data);
@@ -273,7 +330,7 @@
       }
       window.showRun = showRun;
 
-      boot();
+      init();
     </script>
   </body>
 </html>
