@@ -16,6 +16,7 @@ import type { StoreConfig } from './stores';
 export interface Discovery {
   collectionUrl: string | null;
   productUrl: string | null;
+  prefix: string; // prefijo de locale/mercado descubierto (p. ej. "/es-eu"), o "" si no hay
   how: string; // cómo se descubrió (para el detalle/depuración)
 }
 export interface CheckCtx {
@@ -173,7 +174,7 @@ async function cartLineItems(page: Page): Promise<number> {
 
 /** Descubre una colección y un producto reales del tema (DOM primero, sitemap de respaldo). */
 export async function discover(page: Page, store: StoreConfig): Promise<Discovery> {
-  const d: Discovery = { collectionUrl: null, productUrl: null, how: '' };
+  const d: Discovery = { collectionUrl: null, productUrl: null, prefix: '', how: '' };
 
   // 1) Colección: primer enlace a /collections/ del tema (evita "all"/"frontpage" y filtros con query).
   try {
@@ -219,6 +220,15 @@ export async function discover(page: Page, store: StoreConfig): Promise<Discover
     if (!d.collectionUrl && sm.collectionUrl) d.collectionUrl = sm.collectionUrl;
     if (!d.productUrl && sm.productUrl) d.productUrl = sm.productUrl;
     if (sm.collectionUrl || sm.productUrl) d.how = d.how ? `${d.how}+sitemap` : 'sitemap';
+  }
+
+  // Prefijo de locale/mercado: lo que va entre el origen y /collections|/products
+  // (p. ej. "/es-eu"). Se usa para que /search y /cart apunten al mismo mercado.
+  const ref = d.collectionUrl || d.productUrl;
+  if (ref) {
+    const path = ref.replace(store.baseUrl, '').replace(/^https?:\/\/[^/]+/, '');
+    const m = path.match(/^(\/[a-z]{2}(?:-[a-z]{2})?)\/(?:collections|products)\//i);
+    if (m) d.prefix = m[1];
   }
 
   return d;
@@ -344,8 +354,8 @@ export const checks: Check[] = [
     group: 'PDP + carrito',
     label: 'El checkout es alcanzable',
     desc: 'Abre el carrito y confirma que aparece la línea de producto y el botón de pago (sin llegar a comprar).',
-    run: async ({ page, store }) => {
-      await nav(page, `${store.baseUrl}/cart`);
+    run: async ({ page, store, disco }) => {
+      await nav(page, `${store.baseUrl}${disco.prefix}/cart`);
       await dismissPopups(page);
       let lines = await cartLineItems(page);
       if (lines === 0) {
@@ -369,8 +379,8 @@ export const checks: Check[] = [
     group: 'Buscador',
     label: 'El buscador devuelve resultados',
     desc: 'Busca un término habitual en la tienda y comprueba que devuelve productos.',
-    run: async ({ page, store }) => {
-      const url = `${store.baseUrl}/search?q=${encodeURIComponent(store.searchTerm)}`;
+    run: async ({ page, store, disco }) => {
+      const url = `${store.baseUrl}${disco.prefix}/search?q=${encodeURIComponent(store.searchTerm)}`;
       const products = await countResilient(page, url, 'a[href*="/products/"]');
       return { ok: products > 0, detail: `"${store.searchTerm}" → ${products} resultados` };
     },

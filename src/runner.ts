@@ -142,7 +142,7 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
   });
 
   // Descubre una colección y un producto reales del tema una sola vez; los checks los reutilizan.
-  const disco = await discover(page, store).catch(() => ({ collectionUrl: null, productUrl: null, how: 'error' }));
+  const disco = await discover(page, store).catch(() => ({ collectionUrl: null, productUrl: null, prefix: '', how: 'error' }));
 
   const items: ResultItem[] = [];
   for (const check of checks) {
@@ -166,6 +166,8 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
       /* sin captura */
     }
     items.push({ group: check.group, label: check.label, desc: check.desc, ok, detail, shot, level: 'check' });
+    // Pacing: separa las peticiones para no disparar el rate-limiting de la tienda en la ráfaga.
+    await page.waitForTimeout(1200);
   }
 
   // Informativo: errores de JS (no listados) capturados durante toda la ejecución. No cuenta para el
