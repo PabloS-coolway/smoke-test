@@ -133,6 +133,11 @@
       .login-err { color: var(--fail); font-size: 13px; min-height: 18px; margin: 0; }
       .logout { position: absolute; bottom: var(--sp-4); left: var(--sp-3); right: var(--sp-3); width: calc(100% - var(--sp-3) * 2); font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: none; border: 1px solid var(--line-2); border-radius: 9px; padding: 8px; cursor: pointer; }
       .logout:hover { background: var(--panel); color: var(--ink); }
+
+      /* Aviso de validación en curso (bloqueo de concurrencia visible) */
+      .busy-banner { display: flex; align-items: center; gap: var(--sp-2); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 10px var(--sp-4); margin-bottom: var(--sp-3); font-size: 13.5px; color: var(--muted); font-weight: 600; }
+      .busy-banner::before { content: ''; width: 13px; height: 13px; border: 2px solid var(--faint); border-top-color: transparent; border-radius: 50%; animation: spin 0.75s linear infinite; flex: none; }
+      @media (prefers-reduced-motion: reduce) { .busy-banner::before { animation-duration: 0s; } }
       @media (max-width: 860px) { .logout { position: static; width: auto; margin-top: var(--sp-3); } }
     </style>
   </head>
@@ -166,6 +171,7 @@
             <p class="lead">Comprueba en un minuto que las funcionalidades clave de las tiendas siguen funcionando. Lánzalo después de cada cambio o deploy.</p>
 
             <p class="section-h">Lanzar validación</p>
+            <div class="busy-banner" id="busyBanner" style="display:none"></div>
             <div class="launch" id="launch"></div>
 
             <div id="results"></div>
@@ -248,6 +254,31 @@
 
         document.querySelectorAll('.nav-item').forEach((n) => (n.onclick = () => setView(n.dataset.view)));
         loadHistory();
+        syncBusy();
+        if (!busyTimer) busyTimer = setInterval(syncBusy, 4000);
+      }
+
+      // Refleja el candado del servidor en la UI: si hay una validación en curso (esta pestaña u otra),
+      // deshabilita los botones y muestra el aviso, para que nadie lance una segunda (que daría 409).
+      let busyTimer = null;
+      let localRunning = false;
+      async function syncBusy() {
+        if (localRunning) return; // durante una corrida local ya gestionamos el estado nosotros
+        let busy = false, name = null;
+        try {
+          const r = await fetch('/api/busy');
+          if (r.status === 401) { showLogin(); return; }
+          const b = await safeJson(r);
+          busy = !!b.busy; name = b.storeName;
+        } catch { return; }
+        document.querySelectorAll('#launch button').forEach((x) => (x.disabled = busy));
+        const banner = $('#busyBanner');
+        if (busy) {
+          banner.textContent = 'Hay una validación en curso' + (name ? ' (' + name + ')' : '') + '. Espera a que termine.';
+          banner.style.display = 'flex';
+        } else {
+          banner.style.display = 'none';
+        }
       }
 
       $('#logout').addEventListener('click', async () => {
@@ -270,7 +301,10 @@
       function replaceCard(id, html) { const el = document.getElementById('run-' + id); if (el) el.outerHTML = html; }
 
       async function run(ids) {
+        localRunning = true;
         setBusy(true);
+        $('#busyBanner').textContent = 'Validación en curso. No lances otra hasta que termine.';
+        $('#busyBanner').style.display = 'flex';
         $('#results').innerHTML = ids.map(runningCard).join('');
         for (const id of ids) {
           try {
@@ -280,7 +314,9 @@
           }
         }
         setBusy(false);
+        localRunning = false;
         loadHistory();
+        syncBusy();
       }
 
       // Arranca la validación y sondea su estado (las corridas superan el timeout de request del proxy).

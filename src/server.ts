@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { stores, storeById } from './stores';
-import { getRun, history, isBusy, jobStatus, startRun } from './runner';
+import { getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
 import { storage } from './storage';
 import { authEnabled, clearSession, isAuthed, requireAuth, setSession, checkPassword } from './auth';
 
@@ -55,6 +55,12 @@ app.get('/api/stores', requireAuth, (_req, res) => {
 /** Historial de ejecuciones (resúmenes, más reciente primero). */
 app.get('/api/history', requireAuth, async (_req, res) => {
   res.json(await history());
+});
+
+/** Estado global: ¿hay una validación en curso? (para que la UI bloquee lanzar otra). */
+app.get('/api/busy', requireAuth, (_req, res) => {
+  const j = runningJob();
+  res.json({ busy: !!j, storeName: j?.storeName ?? null, runId: j?.runId ?? null });
 });
 
 /** Estado de una corrida en curso (para el sondeo del cliente). */

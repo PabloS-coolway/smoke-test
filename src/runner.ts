@@ -87,10 +87,15 @@ export interface Job {
 }
 const jobs = new Map<string, Job>();
 
+/** La validación en curso ahora mismo, o null si no hay ninguna. */
+export function runningJob(): Job | null {
+  for (const j of jobs.values()) if (j.status === 'running') return j;
+  return null;
+}
+
 /** ¿Hay alguna validación ejecutándose ahora mismo? */
 export function isBusy(): boolean {
-  for (const j of jobs.values()) if (j.status === 'running') return true;
-  return false;
+  return runningJob() !== null;
 }
 
 /** Estado de una corrida por id (null si no se conoce, p. ej. tras reiniciar el proceso). */
