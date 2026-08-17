@@ -20,7 +20,9 @@ services:
     instance_count: 1
     instance_size_slug: basic-xs # 1 vCPU / 1 GB; Playwright/Chromium necesita algo de RAM
     health_check:
-      http_path: /api/stores
+      # Endpoint PÚBLICO (no exige login). Ojo: no apuntar a rutas con requireAuth,
+      # devolverían 401 y DO marcaría el deploy como no-sano.
+      http_path: /api/session
     envs:
       - key: STORE_EU_URL
         scope: RUN_TIME
