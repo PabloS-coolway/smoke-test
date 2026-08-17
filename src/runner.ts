@@ -144,8 +144,8 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
   // Descubre una colección y un producto reales del tema una sola vez; los checks los reutilizan.
   const disco = await discover(page, store).catch(() => ({ collectionUrl: null, productUrl: null, prefix: '', how: 'error' }));
 
-  const items: ResultItem[] = [];
-  for (const check of checks) {
+  // Ejecuta un check (con su captura) y devuelve el ResultItem. `idx` fija el nombre de la captura.
+  const runCheck = async (check: (typeof checks)[number], idx: number): Promise<ResultItem> => {
     let ok = false;
     let detail = '';
     try {
@@ -158,16 +158,34 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
     }
     let shot: string | null = null;
     try {
-      const file = `${items.length}-${check.label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
+      const file = `${idx}-${check.label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
       const png = await page.screenshot();
       await storage.putImage(`${runId}/${file}`, png);
       shot = `${runId}/${file}`;
     } catch {
       /* sin captura */
     }
-    items.push({ group: check.group, label: check.label, desc: check.desc, ok, detail, shot, level: 'check' });
+    return { group: check.group, label: check.label, desc: check.desc, ok, detail, shot, level: 'check' };
+  };
+
+  const items: ResultItem[] = [];
+  for (let i = 0; i < checks.length; i++) {
+    items.push(await runCheck(checks[i], i));
     // Pacing: separa las peticiones para no disparar el rate-limiting de la tienda en la ráfaga.
     await page.waitForTimeout(1200);
+  }
+
+  // Segunda pasada: reintenta SOLO los checks que fallaron, tras una pausa de enfriamiento. Las tiendas
+  // throttlean las peticiones tardías de la ráfaga (dan resultados vacíos/challenge); el respiro deja que
+  // el límite se resetee y evita falsos negativos. Se queda con el mejor resultado de las dos pasadas.
+  const failedIdx = items.map((it, i) => (it.ok ? -1 : i)).filter((i) => i >= 0);
+  if (failedIdx.length > 0 && failedIdx.length < checks.length) {
+    await page.waitForTimeout(10000);
+    for (const i of failedIdx) {
+      const retry = await runCheck(checks[i], i);
+      if (retry.ok) items[i] = retry;
+      await page.waitForTimeout(1500);
+    }
   }
 
   // Informativo: errores de JS (no listados) capturados durante toda la ejecución. No cuenta para el
