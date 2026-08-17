@@ -70,9 +70,63 @@ const IGNORE_JS = [
   'Failed to fetch', // fetch de trackers/terceros bloqueados en headless — benigno
 ];
 
-/** Corre todos los checks contra una tienda y devuelve el informe (con capturas). */
-export async function runStore(store: StoreConfig): Promise<RunResult> {
+/**
+ * Registro de corridas en curso. Las validaciones tardan más de lo que aguanta el proxy de DO
+ * (~60 s de timeout de request), así que NO se sirven de forma síncrona: se arrancan en segundo plano
+ * y el cliente sondea el estado por `runId`. Además solo se permite UNA a la vez (Chromium en 1 GB
+ * no soporta dos en paralelo).
+ */
+export type JobStatus = 'running' | 'done' | 'error';
+export interface Job {
+  runId: string;
+  store: string;
+  storeName: string;
+  status: JobStatus;
+  error?: string;
+  startedAt: string;
+}
+const jobs = new Map<string, Job>();
+
+/** ¿Hay alguna validación ejecutándose ahora mismo? */
+export function isBusy(): boolean {
+  for (const j of jobs.values()) if (j.status === 'running') return true;
+  return false;
+}
+
+/** Estado de una corrida por id (null si no se conoce, p. ej. tras reiniciar el proceso). */
+export function jobStatus(runId: string): Job | null {
+  return jobs.get(runId) ?? null;
+}
+
+/** Arranca una validación en segundo plano y devuelve su runId al instante (no bloquea). */
+export function startRun(store: StoreConfig): string {
   const runId = `${store.id}-${Date.now()}`;
+  const job: Job = {
+    runId,
+    store: store.id,
+    storeName: store.name,
+    status: 'running',
+    startedAt: new Date().toISOString(),
+  };
+  jobs.set(runId, job);
+  void runStore(store, runId)
+    .then(() => {
+      job.status = 'done';
+    })
+    .catch((e) => {
+      job.status = 'error';
+      job.error = e instanceof Error ? e.message : String(e);
+    });
+  // Limpieza: no acumular jobs viejos en memoria indefinidamente.
+  if (jobs.size > 50) {
+    const oldest = [...jobs.values()].filter((j) => j.status !== 'running').slice(0, jobs.size - 50);
+    for (const j of oldest) jobs.delete(j.runId);
+  }
+  return runId;
+}
+
+/** Corre todos los checks contra una tienda y devuelve el informe (con capturas). */
+export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.now()}`): Promise<RunResult> {
   const started = Date.now();
 
   const browser = await chromium.launch({ args: ['--no-sandbox'] });

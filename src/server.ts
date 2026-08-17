@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { stores, storeById } from './stores';
-import { getRun, history, runStore } from './runner';
+import { getRun, history, isBusy, jobStatus, startRun } from './runner';
 import { storage } from './storage';
 import { authEnabled, clearSession, isAuthed, requireAuth, setSession, checkPassword } from './auth';
 
@@ -57,6 +57,13 @@ app.get('/api/history', requireAuth, async (_req, res) => {
   res.json(await history());
 });
 
+/** Estado de una corrida en curso (para el sondeo del cliente). */
+app.get('/api/run/:runId/status', requireAuth, (req, res) => {
+  const job = jobStatus(req.params.runId);
+  if (!job) return res.json({ status: 'unknown' });
+  return res.json({ status: job.status, error: job.error, storeName: job.storeName });
+});
+
 /** Informe completo de una ejecución pasada. */
 app.get('/api/run/:runId', requireAuth, async (req, res) => {
   const r = await getRun(req.params.runId);
@@ -64,17 +71,20 @@ app.get('/api/run/:runId', requireAuth, async (req, res) => {
   return res.json(r);
 });
 
-/** Lanza el smoke test de una tienda y devuelve el informe. */
-app.post('/api/run', requireAuth, async (req, res) => {
+/**
+ * Arranca el smoke test de una tienda y devuelve el `runId` AL INSTANTE (202). La validación corre en
+ * segundo plano; el cliente sondea `/api/run/:runId/status` y, al acabar, pide el informe con
+ * `/api/run/:runId`. Se hace así porque una corrida tarda más que el timeout de request de DO (~60 s).
+ */
+app.post('/api/run', requireAuth, (req, res) => {
   const id = String((req.body as { store?: string })?.store ?? '');
   const store = storeById(id);
   if (!store) return res.status(400).json({ error: `Tienda desconocida: "${id}".` });
-  try {
-    const result = await runStore(store);
-    return res.json(result);
-  } catch (e) {
-    return res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  if (isBusy()) {
+    return res.status(409).json({ error: 'Ya hay una validación en curso. Espera a que termine.' });
   }
+  const runId = startRun(store);
+  return res.status(202).json({ runId, storeName: store.name });
 });
 
 // La UI (estática) va al final; su JS pedirá /api/session y mostrará el login si hace falta.

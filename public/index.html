@@ -264,27 +264,63 @@
       function setBusy(b) { document.querySelectorAll('#launch button').forEach((x) => (x.disabled = b)); }
       function storeName(id) { return (STORES.find((s) => s.id === id) || {}).name || id; }
 
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const esc = (s) => { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; };
+      async function safeJson(r) { try { return await r.json(); } catch { return {}; } }
+      function replaceCard(id, html) { const el = document.getElementById('run-' + id); if (el) el.outerHTML = html; }
+
       async function run(ids) {
         setBusy(true);
         $('#results').innerHTML = ids.map(runningCard).join('');
         for (const id of ids) {
           try {
-            const res = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store: id }) });
-            if (res.status === 401) { showLogin(); return; }
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || res.statusText);
-            document.getElementById('run-' + id).outerHTML = card(data);
+            await runOne(id);
           } catch (e) {
-            const el = document.getElementById('run-' + id);
-            if (el) el.outerHTML = '<div class="card"><p class="err">Error probando ' + id + ': ' + e.message + '</p></div>';
+            replaceCard(id, errorCard(storeName(id), e.message));
           }
         }
         setBusy(false);
         loadHistory();
       }
 
+      // Arranca la validación y sondea su estado (las corridas superan el timeout de request del proxy).
+      async function runOne(id) {
+        const res = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store: id }) });
+        if (res.status === 401) { showLogin(); throw new Error('Sesión caducada, vuelve a entrar.'); }
+        const start = await safeJson(res);
+        if (res.status === 409) throw new Error(start.error || 'Ya hay una validación en curso.');
+        if (!res.ok || !start.runId) throw new Error(start.error || 'No se pudo arrancar la validación.');
+
+        const deadline = Date.now() + 6 * 60 * 1000; // margen amplio
+        while (Date.now() < deadline) {
+          await sleep(3000);
+          let st;
+          try {
+            const r = await fetch('/api/run/' + start.runId + '/status');
+            if (r.status === 401) { showLogin(); throw new Error('Sesión caducada, vuelve a entrar.'); }
+            st = await safeJson(r);
+          } catch {
+            continue; // blip de red: reintenta el sondeo
+          }
+          if (st.status === 'done') {
+            const r = await fetch('/api/run/' + start.runId);
+            const data = await safeJson(r);
+            if (!r.ok) throw new Error(data.error || 'No se pudo cargar el informe.');
+            replaceCard(id, card(data));
+            return;
+          }
+          if (st.status === 'error') throw new Error(st.error || 'La validación falló durante la ejecución.');
+          // 'running' / 'unknown' → seguir sondeando
+        }
+        throw new Error('La validación tardó demasiado (más de 6 min). Inténtalo de nuevo.');
+      }
+
       function runningCard(id) {
-        return '<div class="card" id="run-' + id + '"><div class="rhead"><div class="store">' + storeName(id) + '</div><span class="verdict run"><span class="spin"></span>Probando…</span></div><div class="when">Puede tardar ~25 s</div></div>';
+        return '<div class="card" id="run-' + id + '"><div class="rhead"><div class="store">' + storeName(id) + '</div><span class="verdict run"><span class="spin"></span>Probando…</span></div><div class="when">Puede tardar 1–2 min</div></div>';
+      }
+
+      function errorCard(name, msg) {
+        return '<div class="card"><div class="rhead"><div class="store">' + esc(name) + '</div><span class="verdict fail">ERROR</span></div><div class="when">' + esc(msg) + '</div></div>';
       }
 
       function card(d) {

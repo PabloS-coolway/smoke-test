@@ -83,6 +83,22 @@ async function nav(page: Page, url: string) {
   throw last;
 }
 
+/**
+ * Cuenta elementos en una página tolerando cargas lentas (contenido que llega por JS): si sale 0,
+ * espera un poco y vuelve a contar sobre la MISMA página. No recarga (evita amplificar peticiones y
+ * provocar rate-limiting en la tienda).
+ */
+async function countResilient(page: Page, url: string, selector: string): Promise<number> {
+  await nav(page, url);
+  await dismissPopups(page);
+  let n = await page.locator(selector).count();
+  for (let i = 0; i < 2 && n === 0; i++) {
+    await page.waitForTimeout(1500);
+    n = await page.locator(selector).count();
+  }
+  return n;
+}
+
 /** Localiza el botón de añadir al carrito (formulario estándar de Shopify o por texto). */
 async function findAddToCart(page: Page, store: StoreConfig): Promise<Locator | null> {
   const form = page
@@ -251,9 +267,7 @@ export const checks: Check[] = [
     desc: 'Entra en una colección real de la tienda (descubierta del propio menú) y verifica que muestra productos.',
     run: async ({ page, store, disco }) => {
       if (!disco.collectionUrl) return { ok: false, detail: 'no se descubrió ninguna colección en el tema' };
-      await nav(page, disco.collectionUrl);
-      await dismissPopups(page);
-      const products = await page.locator('a[href*="/products/"]').count();
+      const products = await countResilient(page, disco.collectionUrl, 'a[href*="/products/"]');
       const path = disco.collectionUrl.replace(store.baseUrl, '');
       return { ok: products > 0, detail: `${path} · ${products} productos (${disco.how})` };
     },
@@ -333,7 +347,11 @@ export const checks: Check[] = [
     run: async ({ page, store }) => {
       await nav(page, `${store.baseUrl}/cart`);
       await dismissPopups(page);
-      const lines = await cartLineItems(page);
+      let lines = await cartLineItems(page);
+      if (lines === 0) {
+        await page.waitForTimeout(1500);
+        lines = await cartLineItems(page);
+      }
       const checkoutBtn = await page
         .locator(
           '[name="checkout"], button[name="checkout"], a[href*="/checkout"], ' +
@@ -352,9 +370,8 @@ export const checks: Check[] = [
     label: 'El buscador devuelve resultados',
     desc: 'Busca un término habitual en la tienda y comprueba que devuelve productos.',
     run: async ({ page, store }) => {
-      await nav(page, `${store.baseUrl}/search?q=${encodeURIComponent(store.searchTerm)}`);
-      await dismissPopups(page);
-      const products = await page.locator('a[href*="/products/"]').count();
+      const url = `${store.baseUrl}/search?q=${encodeURIComponent(store.searchTerm)}`;
+      const products = await countResilient(page, url, 'a[href*="/products/"]');
       return { ok: products > 0, detail: `"${store.searchTerm}" → ${products} resultados` };
     },
   },
@@ -362,7 +379,11 @@ export const checks: Check[] = [
     group: 'Región',
     label: 'Moneda e idioma correctos',
     desc: 'Comprueba que la tienda muestra el idioma y la moneda que corresponden a su país.',
-    run: async ({ page, store }) => {
+    run: async ({ page, store, disco }) => {
+      // Se comprueba en una página CON precios (ficha o colección), no en la que quedara de antes.
+      const target = disco.productUrl || disco.collectionUrl || store.baseUrl;
+      await nav(page, target);
+      await dismissPopups(page);
       const lang = (await page.locator('html').getAttribute('lang')) ?? '';
       const body = await page.locator('body').innerText().catch(() => '');
       const hasCurrency = body.includes(store.currency);
