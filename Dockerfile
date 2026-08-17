@@ -1,6 +1,7 @@
 # Imagen oficial de Playwright: trae Node + los navegadores ya instalados.
-# La versión debe cuadrar con la de `playwright` en package.json (v1.48).
-FROM mcr.microsoft.com/playwright:v1.48.0-jammy
+# La versión DEBE cuadrar con la de `playwright` en package.json (pineada a 1.62.0),
+# si no, el navegador de la imagen no coincide con el que espera playwright.
+FROM mcr.microsoft.com/playwright:v1.62.0-jammy
 
 WORKDIR /app
 
