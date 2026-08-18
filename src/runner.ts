@@ -190,14 +190,21 @@ function parseProxy(url?: string): { server: string; username?: string; password
   }
 }
 
-/** Mide el rendimiento de la home (TTFB y carga completa) con la API de Navigation Timing. */
+/**
+ * Mide el rendimiento de la home: TTFB (latencia hasta el primer byte) y tiempo hasta "DOM listo"
+ * (página usable). Se mide EN FRÍO (debe ser la primera navegación del contexto) para que el TTFB no
+ * salga falseado por la caché. No espera a que carguen todas las imágenes/trackers (eso da minutos).
+ */
 async function measurePerf(page: import('playwright').Page, store: StoreConfig): Promise<Perf | null> {
   try {
-    await page.goto(store.baseUrl, { timeout: 30000, waitUntil: 'load' });
+    await page.goto(store.baseUrl, { timeout: 30000, waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(400); // deja que se rellene el timing
     return await page.evaluate(() => {
       const n = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
       if (!n) return null;
-      return { ttfbMs: Math.round(n.responseStart), loadMs: Math.round(n.loadEventEnd || n.duration) };
+      const ttfb = Math.round(n.responseStart);
+      const dcl = Math.round(n.domContentLoadedEventEnd || n.responseEnd);
+      return { ttfbMs: ttfb > 0 ? ttfb : Math.round(n.responseEnd), loadMs: dcl };
     });
   } catch {
     return null;
@@ -240,16 +247,16 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
       if (!IGNORE_JS.some((s) => e.message.includes(s))) jsErrors.push(e.message);
     });
 
+    // Rendimiento de la home: EN FRÍO (primera navegación del contexto) y solo en escritorio.
+    if (vp.id === 'desktop' && (!blocks || !blocks.length || blocks.includes('HOME'))) {
+      perf = await measurePerf(page, store);
+    }
+
     // Descubre colección y producto reales del tema una sola vez (en escritorio); se reutilizan en móvil.
     if (!disco) {
       disco = await discover(page, store).catch(() => ({ collectionUrl: null, productUrl: null, prefix: '', how: 'error' }));
     }
     const disco_ = disco;
-
-    // Rendimiento de la home: se mide una vez, en escritorio.
-    if (vp.id === 'desktop' && (!blocks || !blocks.length || blocks.includes('HOME'))) {
-      perf = await measurePerf(page, store);
-    }
 
     // Ejecuta un check (con su captura) y devuelve el ResultItem. La captura lleva el id de vista + idx.
     const runCheck = async (check: (typeof checks)[number], idx: number): Promise<ResultItem> => {
