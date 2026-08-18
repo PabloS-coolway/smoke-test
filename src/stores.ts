@@ -19,6 +19,15 @@ export interface StoreConfig {
    * Se lee de la env `STORE_<ID>_PROXY` (STORE_EU_PROXY, STORE_US_PROXY). Vacío = sin proxy (directo).
    */
   proxy?: string;
+  /**
+   * Shopify **Web Bot Auth**: firma que identifica al monitor como bot AUTORIZADO de la tienda (rate
+   * limits altos, no lo challengea). Se genera en el Admin de la tienda: Online Store → Preferences →
+   * Crawler access → Create signature. Da dos valores (`Signature` y `Signature-Input`) que se envían
+   * como cabeceras junto a `Signature-Agent: "https://shopify.com"`. Caduca (máx 3 meses).
+   * Se leen de `STORE_<ID>_SIGNATURE` y `STORE_<ID>_SIGNATURE_INPUT`.
+   */
+  sig?: string;
+  sigInput?: string;
 }
 
 const clean = (s?: string) => (s ?? '').trim().replace(/\/+$/, '');
@@ -36,6 +45,8 @@ export function stores(): StoreConfig[] {
       addToCart: ['Añadir al carrito', 'Añadir', 'Agregar', 'Add to cart'],
       searchTerm: 'botas',
       proxy: env(process.env.STORE_EU_PROXY),
+      sig: env(process.env.STORE_EU_SIGNATURE),
+      sigInput: env(process.env.STORE_EU_SIGNATURE_INPUT),
     },
     {
       id: 'us',
@@ -47,6 +58,8 @@ export function stores(): StoreConfig[] {
       addToCart: ['Add to cart', 'Add to bag', 'Añadir'],
       searchTerm: 'boots',
       proxy: env(process.env.STORE_US_PROXY),
+      sig: env(process.env.STORE_US_SIGNATURE),
+      sigInput: env(process.env.STORE_US_SIGNATURE_INPUT),
     },
   ];
   // Solo las que tienen URL configurada.

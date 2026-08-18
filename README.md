@@ -68,6 +68,23 @@ Variables de entorno (todas en `.env.example` / `.do/app.yaml`):
 
 Puerto HTTP: **8080**. La app sirve la UI en `/`, la API en `/api` y las capturas en `/runs`.
 
+## Tiendas que bloquean al servidor (Shopify Web Bot Auth) ← recomendado
+
+Shopify aplica **rate limits/challenges** a las peticiones profundas (`/cart`, `/search`) desde IPs de
+datacenter que no se identifican. La vía **oficial y gratis** para monitorizar **tu propia** tienda es
+**Web Bot Auth**: firmas el tráfico como bot autorizado.
+
+1. En el Admin de la tienda: **Online Store → Preferences → Crawler access → Create signature** (elige
+   caducidad, máx 3 meses).
+2. Copia los dos valores que da (**Signature** y **Signature-Input**) a las envs de esa tienda:
+   `STORE_US_SIGNATURE` y `STORE_US_SIGNATURE_INPUT` (análogo para EU). El código añade
+   `Signature-Agent: "https://shopify.com"` solo.
+3. Redeploy. El monitor envía esas cabeceras en cada petición → tráfico autorizado, límites altos.
+
+Es **por tienda** (cada firma va ligada a su dominio) y **caduca** (recordar renovar cada ≤3 meses).
+No es un bypass del WAF ni del checkout: si aún queda algo bloqueado, el informe lo marca **ámbar
+"no verificable"** (ver abajo), no rojo.
+
 ## Tiendas que bloquean IPs de datacenter (proxy)
 
 Algunas tiendas Shopify tienen protección anti-bot que **desafía (challenge) a las IPs de datacenter**

@@ -140,6 +140,21 @@ function monitorHeader(): Record<string, string> | null {
   return name && value ? { [name]: value } : null;
 }
 
+/**
+ * Cabeceras a enviar en cada petición del navegador para esta tienda: la cabecera genérica del monitor
+ * (si hay) + las de **Shopify Web Bot Auth** (si la tienda tiene firma), que la identifican como bot
+ * autorizado. Vacío = ninguna (peticiones normales).
+ */
+function storeHeaders(store: StoreConfig): Record<string, string> | undefined {
+  const h: Record<string, string> = { ...(monitorHeader() ?? {}) };
+  if (store.sig && store.sigInput) {
+    h['Signature'] = store.sig;
+    h['Signature-Input'] = store.sigInput;
+    h['Signature-Agent'] = '"https://shopify.com"';
+  }
+  return Object.keys(h).length ? h : undefined;
+}
+
 /** Parsea `http://usuario:clave@host:puerto` al formato de proxy de Playwright. */
 function parseProxy(url?: string): { server: string; username?: string; password?: string } | undefined {
   if (!url) return undefined;
@@ -167,10 +182,8 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
   const context = await browser.newContext({
     viewport: { width: 1366, height: 900 },
     locale: store.lang,
-    // Cabecera secreta del monitor (opcional): el dev puede añadir una excepción en la protección
-    // anti-bot de las tiendas ("saltar challenge si llega esta cabecera") para que el monitor pase
-    // sin proxy y sin depender de IPs. Formato env MONITOR_HEADER = "Nombre: valor".
-    ...(monitorHeader() ? { extraHTTPHeaders: monitorHeader() as Record<string, string> } : {}),
+    // Cabeceras del monitor: Web Bot Auth de Shopify (bot autorizado) y/o cabecera secreta genérica.
+    ...(storeHeaders(store) ? { extraHTTPHeaders: storeHeaders(store) as Record<string, string> } : {}),
   });
   const page = await context.newPage();
 
