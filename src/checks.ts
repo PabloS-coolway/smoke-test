@@ -84,19 +84,26 @@ async function dismissPopups(page: Page): Promise<void> {
 export async function isChallenged(page: Page): Promise<boolean> {
   try {
     return await page.evaluate(() => {
+      // 1) Elementos del challenge de Cloudflare/captcha (robusto aunque el texto esté en un iframe).
+      if (
+        document.querySelector(
+          'script[src*="challenges.cloudflare.com"], iframe[src*="challenges.cloudflare.com"], ' +
+            'iframe[src*="challenge"], iframe[src*="turnstile"], iframe[src*="captcha"], ' +
+            '.cf-turnstile, [id^="cf-chl"], #challenge-form, #challenge-running, #challenge-stage, #cf-challenge-running',
+        )
+      ) {
+        return true;
+      }
+      // 2) Texto de la página (inglés y español).
       const t = (document.title || '').toLowerCase();
-      const b = (document.body?.innerText || '').toLowerCase().slice(0, 3000);
+      const b = (document.body?.innerText || '').toLowerCase().slice(0, 4000);
       const hay = (s: string) => t.includes(s) || b.includes(s);
-      // Inglés
-      if (hay('checking your browser') || hay('just a moment') || hay('attention required')) return true;
+      if (hay('checking your browser') || hay('just a moment') || hay('attention required') || hay('un momento')) return true;
       if (hay('verify you are human') || hay('verifying you are human') || hay('enable javascript and cookies')) return true;
-      if (hay('captcha') || hay('cf-challenge') || hay('access denied') || hay('ray id')) return true;
-      // Español (Cloudflare y similares)
-      if (hay('verificar tu conexión') || hay('verificando') || hay('un momento') || hay('comprobando')) return true;
-      if (hay('cloudflare') || hay('revisar la seguridad de tu conexión') || hay('espera mientras')) return true;
-      return !!document.querySelector(
-        'iframe[src*="challenge"], iframe[src*="turnstile"], iframe[src*="captcha"], #challenge-form, #cf-challenge-running',
-      );
+      if (hay('captcha') || hay('cf-challenge') || hay('access denied') || hay('acceso denegado') || hay('ray id')) return true;
+      if (hay('verificar tu conexión') || hay('verificando') || hay('comprobando') || hay('cloudflare')) return true;
+      if (hay('revisar la seguridad') || hay('espera mientras')) return true;
+      return false;
     });
   } catch {
     return false;
