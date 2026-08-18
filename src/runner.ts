@@ -30,7 +30,15 @@ export interface RunResult {
   ok: boolean;
   /** Bloques ejecutados (si fue una corrida parcial); vacío/omitido = todos. */
   blocks?: string[];
+  /** Rendimiento de la home (ms): TTFB (primer byte) y carga completa. */
+  perf?: Perf;
   items: ResultItem[];
+}
+
+/** Métrica de rendimiento de la home. */
+export interface Perf {
+  ttfbMs: number;
+  loadMs: number;
 }
 
 const INDEX = 'index.json';
@@ -45,6 +53,8 @@ export interface RunSummary {
   passed: number;
   total: number;
   ok: boolean;
+  /** Rendimiento de la home (para ver la evolución en el histórico). */
+  perf?: Perf;
 }
 
 /** Historial completo (más reciente primero). */
@@ -180,6 +190,20 @@ function parseProxy(url?: string): { server: string; username?: string; password
   }
 }
 
+/** Mide el rendimiento de la home (TTFB y carga completa) con la API de Navigation Timing. */
+async function measurePerf(page: import('playwright').Page, store: StoreConfig): Promise<Perf | null> {
+  try {
+    await page.goto(store.baseUrl, { timeout: 30000, waitUntil: 'load' });
+    return await page.evaluate(() => {
+      const n = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+      if (!n) return null;
+      return { ttfbMs: Math.round(n.responseStart), loadMs: Math.round(n.loadEventEnd || n.duration) };
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Corre los checks contra una tienda y devuelve el informe (con capturas). `blocks` limita a esos
  *  bloques (HOME/COLECCIONES/PDP/OTROS); vacío/omitido = todos. */
 export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.now()}`, blocks?: string[]): Promise<RunResult> {
@@ -200,6 +224,7 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
 
   const items: ResultItem[] = [];
   let disco: Discovery | null = null; // se descubre una vez (en escritorio) y se reutiliza en móvil
+  let perf: Perf | null = null; // rendimiento de la home (se mide en escritorio)
 
   for (const vp of viewports) {
     const context = await browser.newContext({
@@ -221,6 +246,11 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
     }
     const disco_ = disco;
 
+    // Rendimiento de la home: se mide una vez, en escritorio.
+    if (vp.id === 'desktop' && (!blocks || !blocks.length || blocks.includes('HOME'))) {
+      perf = await measurePerf(page, store);
+    }
+
     // Ejecuta un check (con su captura) y devuelve el ResultItem. La captura lleva el id de vista + idx.
     const runCheck = async (check: (typeof checks)[number], idx: number): Promise<ResultItem> => {
       const jsBefore = jsErrors.length; // para detectar challenge SOLO durante este check
@@ -234,11 +264,10 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
         ok = false;
         detail = `error: ${e instanceof Error ? e.message : String(e)}`;
       }
-      // Si falló Y la tienda sirvió un challenge anti-bot EN ESTE check (página-challenge o un error de
-      // fetch <!DOCTYPE nuevo durante el check), NO es un fallo real: no es verificable desde aquí →
-      // ámbar (info), no rojo. Se acota al check para no sobre-marcar por un error suelto anterior.
-      let level: ResultItem['level'] = 'check';
-      if (!ok) {
+      // Métricas informativas (info) nunca cuentan para el veredicto. Si no, challenge anti-bot EN ESTE
+      // check (página-challenge o error de fetch <!DOCTYPE nuevo) → ámbar, no rojo (acotado al check).
+      let level: ResultItem['level'] = check.info ? 'info' : 'check';
+      if (!ok && level === 'check') {
         const newJs = jsErrors.slice(jsBefore);
         const challengeJs = newJs.some((e) => e.includes('<!DOCTYPE') || e.includes('is not valid JSON'));
         if ((await isChallenged(page).catch(() => false)) || challengeJs) {
@@ -258,18 +287,21 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
       return { group: check.group, label: check.label, desc: check.desc, viewport: vp.name, ok, detail, shot, level };
     };
 
+    // En móvil se saltan los checks `once` (no dependen de la vista: enlaces rotos, redirects, stock…).
+    const vpChecks = vp.mobile ? activeChecks.filter((c) => !c.once) : activeChecks;
+
     const vpItems: ResultItem[] = [];
-    for (let i = 0; i < activeChecks.length; i++) {
-      vpItems.push(await runCheck(activeChecks[i], i));
+    for (let i = 0; i < vpChecks.length; i++) {
+      vpItems.push(await runCheck(vpChecks[i], i));
       await page.waitForTimeout(500); // pacing corto (Web Bot Auth ya da rate limits altos)
     }
 
     // Segunda pasada: reintenta SOLO los checks que fallaron (de verdad, no los ámbar) tras enfriar.
     const failedIdx = vpItems.map((it, i) => (!it.ok && it.level === 'check' ? i : -1)).filter((i) => i >= 0);
-    if (failedIdx.length > 0 && failedIdx.length < activeChecks.length) {
+    if (failedIdx.length > 0 && failedIdx.length < vpChecks.length) {
       await page.waitForTimeout(5000);
       for (const i of failedIdx) {
-        const retry = await runCheck(activeChecks[i], i);
+        const retry = await runCheck(vpChecks[i], i);
         if (retry.ok) vpItems[i] = retry;
         await page.waitForTimeout(800);
       }
@@ -308,10 +340,11 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
     total,
     ok: passed === total,
     blocks: blocks && blocks.length ? blocks : undefined,
+    perf: perf ?? undefined,
     items,
   };
   await storage.putJson(`${runId}/result.json`, result);
-  // Guarda el resumen en el historial (cada ejecución queda registrada).
+  // Guarda el resumen en el historial (cada ejecución queda registrada, con el rendimiento).
   await appendIndex({
     runId,
     store: store.id,
@@ -321,6 +354,7 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
     passed,
     total,
     ok: result.ok,
+    perf: perf ?? undefined,
   });
   return result;
 }

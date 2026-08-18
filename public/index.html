@@ -435,8 +435,9 @@
         for (const it of d.items) (groups[it.group] ||= []).push(it);
         const when = new Date(d.startedAt).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
         const blk = d.blocks && d.blocks.length ? ' · solo ' + d.blocks.join(', ') : '';
+        const perf = d.perf ? ' · carga ' + (d.perf.loadMs / 1000).toFixed(1) + ' s · TTFB ' + d.perf.ttfbMs + ' ms' : '';
 
-        let h = '<div class="card"><div class="rhead"><div class="store">' + d.storeName + '<span class="url">' + d.baseUrl.replace(/^https?:\/\//, '') + '</span></div><span class="verdict ' + (d.ok ? 'ok' : 'fail') + '">' + (d.ok ? 'TODO OK' : 'HAY FALLOS') + ' · ' + d.passed + '/' + d.total + '</span></div><div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s' + blk + '</div>';
+        let h = '<div class="card"><div class="rhead"><div class="store">' + d.storeName + '<span class="url">' + d.baseUrl.replace(/^https?:\/\//, '') + '</span></div><span class="verdict ' + (d.ok ? 'ok' : 'fail') + '">' + (d.ok ? 'TODO OK' : 'HAY FALLOS') + ' · ' + d.passed + '/' + d.total + '</span></div><div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s' + blk + perf + '</div>';
         for (const [g, items] of Object.entries(groups)) {
           h += '<div class="grp"><h4>' + g + '</h4>';
           for (const it of items) {
@@ -464,8 +465,9 @@
           '<td>' + h.storeName + '</td>' +
           '<td><span class="score">' + h.passed + '/' + h.total + '</span></td>' +
           '<td class="num">' + new Date(h.startedAt).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</td>' +
+          '<td class="num">' + (h.perf ? (h.perf.loadMs / 1000).toFixed(1) + ' s' : '—') + '</td>' +
           '<td class="num">' + (h.durationMs / 1000).toFixed(0) + ' s</td></tr>').join('');
-        box.innerHTML = '<table class="htable"><thead><tr><th>Estado</th><th>Tienda</th><th>Resultado</th><th>Fecha</th><th>Duración</th></tr></thead><tbody>' + rows + '</tbody></table>';
+        box.innerHTML = '<table class="htable"><thead><tr><th>Estado</th><th>Tienda</th><th>Resultado</th><th>Fecha</th><th>Carga</th><th>Duración</th></tr></thead><tbody>' + rows + '</tbody></table>';
       }
 
       async function showRun(runId, el) {

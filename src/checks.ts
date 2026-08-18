@@ -31,6 +31,10 @@ export interface Check {
   label: string;
   /** Descripción breve, en lenguaje llano, de qué comprueba este test (se muestra en el informe). */
   desc: string;
+  /** Solo tiene sentido una vez (no depende de la vista): se corre solo en Escritorio, no en Móvil. */
+  once?: boolean;
+  /** Métrica informativa: se muestra pero NO cuenta para el veredicto (ámbar/neutro, nunca rojo). */
+  info?: boolean;
   run: (c: CheckCtx) => Promise<{ ok: boolean; detail: string }>;
 }
 
@@ -459,6 +463,83 @@ export const checks: Check[] = [
         ok: hasCurrency && langOk,
         detail: `lang="${lang || '—'}" (esperado ${store.lang}*) · moneda ${store.currency} ${hasCurrency ? 'sí' : 'no'}`,
       };
+    },
+  },
+  {
+    group: 'OTROS',
+    label: 'Sin enlaces rotos',
+    desc: 'Revisa una muestra de enlaces internos (menú, footer…) y comprueba que ninguno lleva a un 404.',
+    once: true,
+    run: async ({ page, store }) => {
+      await nav(page, store.baseUrl);
+      await dismissPopups(page);
+      const r = await page.evaluate(async () => {
+        const origin = location.origin;
+        const skip = /\/cdn\/|\.(png|jpe?g|webp|svg|gif|css|js|pdf|ico)(\?|$)|^mailto:|^tel:|#/i;
+        const hrefs = Array.from(document.querySelectorAll('a[href]'))
+          .map((a) => (a as HTMLAnchorElement).href)
+          .filter((h) => h.startsWith(origin) && !skip.test(h));
+        const unique = Array.from(new Set(hrefs)).slice(0, 25);
+        const broken: string[] = [];
+        for (const u of unique) {
+          try {
+            const resp = await fetch(u, { method: 'HEAD', redirect: 'follow' });
+            if (resp.status >= 400) broken.push(u.replace(origin, '') + ' (' + resp.status + ')');
+          } catch {
+            /* fallo de red puntual: no lo contamos como roto */
+          }
+        }
+        return { checked: unique.length, broken };
+      });
+      const ok = r.broken.length === 0;
+      return {
+        ok,
+        detail: `${r.checked} enlaces revisados · ${r.broken.length} roto(s)${r.broken.length ? ': ' + r.broken.slice(0, 3).join(', ') : ''}`,
+      };
+    },
+  },
+  {
+    group: 'COLECCIONES',
+    label: 'Disponibilidad de stock',
+    desc: 'Cuenta cuántos productos de la colección aparecen agotados (informativo, no es un fallo).',
+    once: true,
+    info: true,
+    run: async ({ page, disco }) => {
+      if (!disco.collectionUrl) return { ok: true, detail: 'sin colección que revisar' };
+      await nav(page, disco.collectionUrl);
+      await dismissPopups(page);
+      const r = await page.evaluate(() => {
+        const soldSel = '.sold-out, .badge--sold-out, [class*="sold-out"], [class*="soldout"], [data-sold-out]';
+        const cards = Array.from(
+          document.querySelectorAll('[class*="product-card"], [class*="product-item"], .grid__item, li[class*="product"]'),
+        );
+        let sold = 0;
+        for (const c of cards) {
+          if (c.querySelector(soldSel) || /\b(agotado|sold out)\b/i.test(c.textContent || '')) sold++;
+        }
+        return { total: cards.length, sold: sold || document.querySelectorAll(soldSel).length };
+      });
+      return { ok: true, detail: `${r.sold} agotado(s)${r.total ? ' de ~' + r.total + ' productos' : ''}` };
+    },
+  },
+  {
+    group: 'OTROS',
+    label: 'Redirecciones correctas',
+    desc: 'Comprueba que http lleva a https y muestra el mercado/idioma por región que aplica la tienda.',
+    once: true,
+    run: async ({ page, store, disco }) => {
+      let httpsOk = false;
+      let landed = '';
+      try {
+        const httpUrl = store.baseUrl.replace(/^https:/i, 'http:');
+        await nav(page, httpUrl);
+        landed = page.url();
+        httpsOk = landed.startsWith('https://');
+      } catch {
+        /* si falla, httpsOk queda false */
+      }
+      const region = disco.prefix ? `mercado ${disco.prefix}` : 'sin prefijo de mercado';
+      return { ok: httpsOk, detail: `http→https ${httpsOk ? 'sí' : 'no'} · ${region}` };
     },
   },
 ];
