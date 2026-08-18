@@ -74,6 +74,20 @@ async function appendIndex(s: RunSummary): Promise<void> {
   await storage.putJson(INDEX, arr.slice(0, 200));
 }
 
+/** Borra una ejecución: sus capturas, su informe y su fila del historial. */
+export async function deleteRun(runId: string): Promise<boolean> {
+  if (!/^[a-z]+-\d+$/.test(runId)) return false;
+  const result = await getRun(runId);
+  if (result) {
+    for (const it of result.items) if (it.shot) await storage.del(it.shot);
+  }
+  await storage.del(`${runId}/result.json`);
+  const arr = await history();
+  const filtered = arr.filter((r) => r.runId !== runId);
+  await storage.putJson(INDEX, filtered);
+  return true;
+}
+
 /**
  * Errores de JS conocidos y benignos (de librerías/terceros del tema) que NO deben pintar el test
  * en rojo. Se amplía según lo que aparezca en las tiendas reales. Solo fallan los NO listados.

@@ -95,6 +95,16 @@
       .htable tbody tr { cursor: pointer; }
       .htable tbody tr:hover { background: var(--panel-2); }
       .htable tbody tr.active { background: var(--panel-2); }
+      .htable tr.hday td { background: var(--panel-2); font-family: var(--font-display); font-size: 11.5px; text-transform: capitalize; letter-spacing: 0.02em; color: var(--muted); font-weight: 600; padding: 7px var(--sp-4); border-top: 1px solid var(--line); }
+      .htable tr.hday { cursor: default; }
+      .htable td.hact { text-align: right; width: 1%; white-space: nowrap; }
+      .del { font: inherit; font-size: 13px; line-height: 1; color: var(--faint); background: none; border: 1px solid transparent; border-radius: 7px; padding: 5px 8px; cursor: pointer; }
+      .del:hover { color: var(--fail); background: var(--fail-bg); }
+      .pager { display: flex; align-items: center; justify-content: center; gap: var(--sp-4); margin-top: var(--sp-4); }
+      .pg { font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); background: var(--panel); border: 1px solid var(--line-2); border-radius: 9px; padding: 7px 14px; cursor: pointer; }
+      .pg:hover:not(:disabled) { background: var(--panel-2); }
+      .pg:disabled { opacity: 0.4; cursor: default; }
+      .pg-info { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
       .pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; }
       .pill .dot { width: 8px; height: 8px; border-radius: 999px; } .dot.ok { background: var(--ok); } .dot.fail { background: var(--fail); }
       .pill.ok { color: var(--ok); } .pill.fail { color: var(--fail); }
@@ -454,21 +464,57 @@
         return h + '</div>';
       }
 
+      let HIST = [];
+      let histPage = 0;
+      const HIST_PAGE_SIZE = 20;
+
       async function loadHistory() {
-        const list = await fetch('/api/history').then((r) => r.json()).catch(() => []);
-        $('#histCount').textContent = list.length || '';
-        const box = $('#histTable');
-        if (!list.length) { box.innerHTML = '<div class="empty">Sin ejecuciones todavía. Lanza una validación desde «Lanzar validación».</div>'; return; }
-        const rows = list.map((h) =>
-          '<tr data-run="' + h.runId + '" onclick="showRun(\'' + h.runId + '\', this)">' +
-          '<td><span class="pill ' + (h.ok ? 'ok' : 'fail') + '"><span class="dot ' + (h.ok ? 'ok' : 'fail') + '"></span>' + (h.ok ? 'OK' : 'Fallo') + '</span></td>' +
-          '<td>' + h.storeName + '</td>' +
-          '<td><span class="score">' + h.passed + '/' + h.total + '</span></td>' +
-          '<td class="num">' + new Date(h.startedAt).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</td>' +
-          '<td class="num">' + (h.perf ? (h.perf.loadMs / 1000).toFixed(1) + ' s' : '—') + '</td>' +
-          '<td class="num">' + (h.durationMs / 1000).toFixed(0) + ' s</td></tr>').join('');
-        box.innerHTML = '<table class="htable"><thead><tr><th>Estado</th><th>Tienda</th><th>Resultado</th><th>Fecha</th><th>Carga</th><th>Duración</th></tr></thead><tbody>' + rows + '</tbody></table>';
+        HIST = await fetch('/api/history').then((r) => r.json()).catch(() => []);
+        $('#histCount').textContent = HIST.length || '';
+        if (histPage * HIST_PAGE_SIZE >= HIST.length) histPage = Math.max(0, Math.ceil(HIST.length / HIST_PAGE_SIZE) - 1);
+        renderHistory();
       }
+
+      function renderHistory() {
+        const box = $('#histTable');
+        if (!HIST.length) { box.innerHTML = '<div class="empty">Sin ejecuciones todavía. Lanza una validación desde «Lanzar validación».</div>'; return; }
+        const pages = Math.ceil(HIST.length / HIST_PAGE_SIZE);
+        const slice = HIST.slice(histPage * HIST_PAGE_SIZE, histPage * HIST_PAGE_SIZE + HIST_PAGE_SIZE);
+        const dayFmt = (s) => new Date(s).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+
+        let rows = '';
+        let lastDay = '';
+        for (const h of slice) {
+          const day = dayFmt(h.startedAt);
+          if (day !== lastDay) { rows += '<tr class="hday"><td colspan="7">' + day + '</td></tr>'; lastDay = day; }
+          rows +=
+            '<tr data-run="' + h.runId + '" onclick="showRun(\'' + h.runId + '\', this)">' +
+            '<td><span class="pill ' + (h.ok ? 'ok' : 'fail') + '"><span class="dot ' + (h.ok ? 'ok' : 'fail') + '"></span>' + (h.ok ? 'OK' : 'Fallo') + '</span></td>' +
+            '<td>' + h.storeName + '</td>' +
+            '<td><span class="score">' + h.passed + '/' + h.total + '</span></td>' +
+            '<td class="num">' + new Date(h.startedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) + '</td>' +
+            '<td class="num">' + (h.perf ? (h.perf.loadMs / 1000).toFixed(1) + ' s' : '—') + '</td>' +
+            '<td class="num">' + (h.durationMs / 1000).toFixed(0) + ' s</td>' +
+            '<td class="hact"><button class="del" title="Borrar" onclick="event.stopPropagation(); delRun(\'' + h.runId + '\')">✕</button></td></tr>';
+        }
+        const pager = pages > 1
+          ? '<div class="pager"><button class="pg" ' + (histPage === 0 ? 'disabled' : '') + ' onclick="histGo(-1)">← Anteriores</button>' +
+            '<span class="pg-info">Página ' + (histPage + 1) + ' de ' + pages + '</span>' +
+            '<button class="pg" ' + (histPage >= pages - 1 ? 'disabled' : '') + ' onclick="histGo(1)">Siguientes →</button></div>'
+          : '';
+        box.innerHTML = '<table class="htable"><thead><tr><th>Estado</th><th>Tienda</th><th>Resultado</th><th>Hora</th><th>Carga</th><th>Duración</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' + pager;
+      }
+
+      function histGo(d) { histPage += d; renderHistory(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+      window.histGo = histGo;
+
+      async function delRun(runId) {
+        if (!confirm('¿Borrar esta validación del historial? No se puede deshacer.')) return;
+        const r = await fetch('/api/run/' + runId, { method: 'DELETE' });
+        if (r.status === 401) { showLogin(); return; }
+        await loadHistory();
+      }
+      window.delRun = delRun;
 
       async function showRun(runId, el) {
         const d = await fetch('/api/run/' + runId).then((r) => (r.ok ? r.json() : null)).catch(() => null);

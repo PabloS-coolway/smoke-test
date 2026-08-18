@@ -1,6 +1,7 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -23,6 +24,8 @@ export interface Storage {
   getJson<T>(key: string): Promise<T | null>;
   putImage(key: string, body: Buffer): Promise<void>;
   getImage(key: string): Promise<Buffer | null>;
+  /** Borra un objeto (no falla si no existe). */
+  del(key: string): Promise<void>;
   /** Etiqueta legible del backend, para el log de arranque. */
   describe(): string;
 }
@@ -63,6 +66,10 @@ class DiskStorage implements Storage {
     } catch {
       return null;
     }
+  }
+
+  async del(key: string): Promise<void> {
+    await rm(this.full(key), { force: true }).catch(() => undefined);
   }
 
   describe(): string {
@@ -130,6 +137,12 @@ class SpacesStorage implements Storage {
     } catch {
       return null;
     }
+  }
+
+  async del(key: string): Promise<void> {
+    await this.client
+      .send(new DeleteObjectCommand({ Bucket: this.bucket, Key: this.key(key) }))
+      .catch(() => undefined);
   }
 
   describe(): string {

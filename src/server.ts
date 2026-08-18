@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { stores, storeById } from './stores';
-import { BLOCKS, getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
+import { BLOCKS, deleteRun, getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
 import { storage } from './storage';
 import { authEnabled, clearSession, isAuthed, requireAuth, setSession, checkPassword } from './auth';
 
@@ -76,6 +76,13 @@ app.get('/api/run/:runId', requireAuth, async (req, res) => {
   const r = await getRun(req.params.runId);
   if (!r) return res.status(404).json({ error: 'No existe esa ejecución.' });
   return res.json(r);
+});
+
+/** Borra una ejecución del historial (capturas + informe + fila). */
+app.delete('/api/run/:runId', requireAuth, async (req, res) => {
+  const ok = await deleteRun(req.params.runId);
+  if (!ok) return res.status(400).json({ error: 'runId inválido.' });
+  return res.json({ ok: true });
 });
 
 /**
