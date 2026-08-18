@@ -95,8 +95,11 @@
       .htable tbody tr { cursor: pointer; }
       .htable tbody tr:hover { background: var(--panel-2); }
       .htable tbody tr.active { background: var(--panel-2); }
-      .htable tr.hday td { background: var(--panel-2); font-family: var(--font-display); font-size: 11.5px; text-transform: capitalize; letter-spacing: 0.02em; color: var(--muted); font-weight: 600; padding: 7px var(--sp-4); border-top: 1px solid var(--line); }
-      .htable tr.hday { cursor: default; }
+      .htable tr.hday td { background: var(--panel-2); font-family: var(--font-display); font-size: 11.5px; text-transform: capitalize; letter-spacing: 0.02em; color: var(--muted); font-weight: 600; padding: 7px var(--sp-4); border-top: 1px solid var(--line); user-select: none; }
+      .htable tr.hday { cursor: pointer; }
+      .htable tr.hday:hover td { background: var(--panel); color: var(--ink); }
+      .chev { display: inline-block; width: 14px; color: var(--faint); font-size: 10px; }
+      .hday-n { margin-left: 8px; font-size: 10.5px; color: var(--faint); font-weight: 600; background: var(--panel); border: 1px solid var(--line-2); border-radius: 999px; padding: 0 7px; }
       .htable td.hact { text-align: right; width: 1%; white-space: nowrap; }
       .del { font: inherit; font-size: 13px; line-height: 1; color: var(--faint); background: none; border: 1px solid transparent; border-radius: 7px; padding: 5px 8px; cursor: pointer; }
       .del:hover { color: var(--fail); background: var(--fail-bg); }
@@ -467,6 +470,7 @@
       let HIST = [];
       let histPage = 0;
       const HIST_PAGE_SIZE = 20;
+      const collapsedDays = new Set(); // días plegados (por clave de fecha)
 
       async function loadHistory() {
         HIST = await fetch('/api/history').then((r) => r.json()).catch(() => []);
@@ -480,13 +484,24 @@
         if (!HIST.length) { box.innerHTML = '<div class="empty">Sin ejecuciones todavía. Lanza una validación desde «Lanzar validación».</div>'; return; }
         const pages = Math.ceil(HIST.length / HIST_PAGE_SIZE);
         const slice = HIST.slice(histPage * HIST_PAGE_SIZE, histPage * HIST_PAGE_SIZE + HIST_PAGE_SIZE);
+        const dayKeyOf = (s) => new Date(s).toDateString();
         const dayFmt = (s) => new Date(s).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+        const counts = {};
+        for (const h of slice) counts[dayKeyOf(h.startedAt)] = (counts[dayKeyOf(h.startedAt)] || 0) + 1;
 
         let rows = '';
         let lastDay = '';
         for (const h of slice) {
-          const day = dayFmt(h.startedAt);
-          if (day !== lastDay) { rows += '<tr class="hday"><td colspan="7">' + day + '</td></tr>'; lastDay = day; }
+          const dk = dayKeyOf(h.startedAt);
+          if (dk !== lastDay) {
+            const col = collapsedDays.has(dk);
+            rows +=
+              '<tr class="hday" onclick="toggleDay(\'' + dk + '\')"><td colspan="7">' +
+              '<span class="chev">' + (col ? '▸' : '▾') + '</span>' + dayFmt(h.startedAt) +
+              '<span class="hday-n">' + counts[dk] + '</span></td></tr>';
+            lastDay = dk;
+          }
+          if (collapsedDays.has(dk)) continue; // día plegado: no se pintan sus filas
           rows +=
             '<tr data-run="' + h.runId + '" onclick="showRun(\'' + h.runId + '\', this)">' +
             '<td><span class="pill ' + (h.ok ? 'ok' : 'fail') + '"><span class="dot ' + (h.ok ? 'ok' : 'fail') + '"></span>' + (h.ok ? 'OK' : 'Fallo') + '</span></td>' +
@@ -507,6 +522,13 @@
 
       function histGo(d) { histPage += d; renderHistory(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
       window.histGo = histGo;
+
+      function toggleDay(dk) {
+        if (collapsedDays.has(dk)) collapsedDays.delete(dk);
+        else collapsedDays.add(dk);
+        renderHistory();
+      }
+      window.toggleDay = toggleDay;
 
       async function delRun(runId) {
         if (!confirm('¿Borrar esta validación del historial? No se puede deshacer.')) return;
