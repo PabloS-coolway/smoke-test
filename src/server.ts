@@ -97,7 +97,7 @@ app.post('/api/run', requireAuth, (req, res) => {
 app.use(express.static(path.resolve('public')));
 
 app.listen(PORT, () => {
-  const list = stores().map((s) => `${s.name} (${s.baseUrl})`).join(', ') || '(ninguna configurada)';
+  const list = stores().map((s) => `${s.name} (${s.baseUrl})${s.proxy ? ' [proxy]' : ''}`).join(', ') || '(ninguna configurada)';
   console.log(`coolway-smoke escuchando en http://localhost:${PORT}`);
   console.log(`Tiendas: ${list}`);
   console.log(`Historial: ${storage.describe()}`);

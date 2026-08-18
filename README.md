@@ -68,6 +68,23 @@ Variables de entorno (todas en `.env.example` / `.do/app.yaml`):
 
 Puerto HTTP: **8080**. La app sirve la UI en `/`, la API en `/api` y las capturas en `/runs`.
 
+## Tiendas que bloquean IPs de datacenter (proxy)
+
+Algunas tiendas Shopify tienen protección anti-bot que **desafía (challenge) a las IPs de datacenter**
+en las peticiones profundas (`/cart`, `/search`) — las primeras páginas cargan, pero las siguientes
+reciben una página-challenge y los checks salen vacíos. Se confirmó que **coolway-us.com lo hace desde
+cualquier datacenter** (Frankfurt y Nueva York) — **no es geográfico**. La tienda EU no lo hace.
+
+**Solución:** enrutar esa tienda por un **proxy residencial** de su país. Es por-tienda (escalable a las
+12): define `STORE_<ID>_PROXY` con `http://usuario:clave@host:puerto`.
+
+```
+STORE_US_PROXY="http://user:pass@us.residential-proxy.example:8000"
+```
+
+Proveedores de proxy residencial: Bright Data, Oxylabs, IPRoyal, Webshare (tienen planes de pago; el
+tráfico del smoke test es mínimo). La EU no necesita proxy (va 8/8 directa desde DO).
+
 ## Añadir tiendas / afinar
 
 - **Tiendas y parámetros por región** (URL, idioma, moneda, etiquetas de menú, texto del botón de

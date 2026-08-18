@@ -12,9 +12,17 @@ export interface StoreConfig {
   navHover: string[]; // etiquetas de menú a las que hacer hover para abrir el mega-menú
   addToCart: string[]; // textos candidatos del botón de añadir al carrito
   searchTerm: string; // término que debería devolver resultados
+  /**
+   * Proxy opcional por el que enrutar TODO el tráfico del navegador de esta tienda. Algunas tiendas
+   * (p. ej. la US) bloquean con bot-challenge a las IPs de datacenter en las peticiones profundas; un
+   * proxy RESIDENCIAL del país de la tienda lo evita. Formato: `http://usuario:clave@host:puerto`.
+   * Se lee de la env `STORE_<ID>_PROXY` (STORE_EU_PROXY, STORE_US_PROXY). Vacío = sin proxy (directo).
+   */
+  proxy?: string;
 }
 
 const clean = (s?: string) => (s ?? '').trim().replace(/\/+$/, '');
+const env = (s?: string) => (s ?? '').trim() || undefined;
 
 export function stores(): StoreConfig[] {
   const all: StoreConfig[] = [
@@ -27,6 +35,7 @@ export function stores(): StoreConfig[] {
       navHover: ['Hombre', 'Mujer'],
       addToCart: ['Añadir al carrito', 'Añadir', 'Agregar', 'Add to cart'],
       searchTerm: 'botas',
+      proxy: env(process.env.STORE_EU_PROXY),
     },
     {
       id: 'us',
@@ -37,6 +46,7 @@ export function stores(): StoreConfig[] {
       navHover: ['Men', 'Women'],
       addToCart: ['Add to cart', 'Add to bag', 'Añadir'],
       searchTerm: 'boots',
+      proxy: env(process.env.STORE_US_PROXY),
     },
   ];
   // Solo las que tienen URL configurada.

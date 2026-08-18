@@ -130,11 +130,30 @@ export function startRun(store: StoreConfig): string {
   return runId;
 }
 
+/** Parsea `http://usuario:clave@host:puerto` al formato de proxy de Playwright. */
+function parseProxy(url?: string): { server: string; username?: string; password?: string } | undefined {
+  if (!url) return undefined;
+  try {
+    const u = new URL(url);
+    const proxy: { server: string; username?: string; password?: string } = {
+      server: `${u.protocol}//${u.host}`,
+    };
+    if (u.username) proxy.username = decodeURIComponent(u.username);
+    if (u.password) proxy.password = decodeURIComponent(u.password);
+    return proxy;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Corre todos los checks contra una tienda y devuelve el informe (con capturas). */
 export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.now()}`): Promise<RunResult> {
   const started = Date.now();
 
-  const browser = await chromium.launch({ args: ['--no-sandbox'] });
+  // Proxy por-tienda (opcional): enruta el navegador por una IP residencial del país de la tienda,
+  // para las tiendas que bloquean con bot-challenge a IPs de datacenter (p. ej. la US).
+  const proxy = parseProxy(store.proxy);
+  const browser = await chromium.launch({ args: ['--no-sandbox'], ...(proxy ? { proxy } : {}) });
   const context = await browser.newContext({
     viewport: { width: 1366, height: 900 },
     locale: store.lang,
