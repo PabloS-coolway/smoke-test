@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { checks, discover } from './checks';
+import { checks, discover, isChallenged } from './checks';
 import { storage } from './storage';
 import type { StoreConfig } from './stores';
 
@@ -180,6 +180,16 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
       ok = false;
       detail = `error: ${e instanceof Error ? e.message : String(e)}`;
     }
+    // Si falló Y la tienda está sirviendo un challenge anti-bot a este servidor, NO es un fallo real:
+    // no es verificable desde aquí. Se marca ámbar (info) para no dar un rojo falso.
+    let level: ResultItem['level'] = 'check';
+    if (!ok) {
+      const challengeJs = jsErrors.some((e) => e.includes('<!DOCTYPE') || e.includes('is not valid JSON'));
+      if ((await isChallenged(page).catch(() => false)) || challengeJs) {
+        level = 'info';
+        detail = `${detail} · bloqueo anti-bot: no verificable desde el servidor`;
+      }
+    }
     let shot: string | null = null;
     try {
       const file = `${idx}-${check.label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
@@ -189,7 +199,7 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
     } catch {
       /* sin captura */
     }
-    return { group: check.group, label: check.label, desc: check.desc, ok, detail, shot, level: 'check' };
+    return { group: check.group, label: check.label, desc: check.desc, ok, detail, shot, level };
   };
 
   const items: ResultItem[] = [];
@@ -202,7 +212,7 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
   // Segunda pasada: reintenta SOLO los checks que fallaron, tras una pausa de enfriamiento. Las tiendas
   // throttlean las peticiones tardías de la ráfaga (dan resultados vacíos/challenge); el respiro deja que
   // el límite se resetee y evita falsos negativos. Se queda con el mejor resultado de las dos pasadas.
-  const failedIdx = items.map((it, i) => (it.ok ? -1 : i)).filter((i) => i >= 0);
+  const failedIdx = items.map((it, i) => (!it.ok && it.level === 'check' ? i : -1)).filter((i) => i >= 0);
   if (failedIdx.length > 0 && failedIdx.length < checks.length) {
     await page.waitForTimeout(10000);
     for (const i of failedIdx) {

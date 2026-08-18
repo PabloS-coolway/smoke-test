@@ -70,6 +70,29 @@ async function dismissPopups(page: Page): Promise<void> {
   }
 }
 
+/**
+ * ¿La página actual es una página-challenge anti-bot (Cloudflare/captcha/etc.) en vez del contenido
+ * real? Algunas tiendas la sirven a IPs de datacenter en las peticiones profundas. Si es así, el check
+ * no es un FALLO real de la tienda: es que no se puede verificar desde este servidor (se marca ámbar).
+ */
+export async function isChallenged(page: Page): Promise<boolean> {
+  try {
+    return await page.evaluate(() => {
+      const t = (document.title || '').toLowerCase();
+      const b = (document.body?.innerText || '').toLowerCase().slice(0, 3000);
+      const hay = (s: string) => t.includes(s) || b.includes(s);
+      if (hay('checking your browser') || hay('just a moment') || hay('attention required')) return true;
+      if (hay('verify you are human') || hay('verifying you are human') || hay('enable javascript and cookies')) return true;
+      if (hay('captcha') || hay('cf-challenge') || hay('access denied') || hay('ray id')) return true;
+      return !!document.querySelector(
+        'iframe[src*="challenge"], iframe[src*="turnstile"], iframe[src*="captcha"], #challenge-form, #cf-challenge-running',
+      );
+    });
+  } catch {
+    return false;
+  }
+}
+
 /** Navega con reintento: los blips de red transitorios (net::ERR_*) no deben tumbar un check. */
 async function nav(page: Page, url: string) {
   let last: unknown;
