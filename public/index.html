@@ -116,6 +116,9 @@
       .badge { flex: none; width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; margin-top: 1px; }
       .badge.ok { background: var(--ok); } .badge.fail { background: var(--fail); } .badge.info { background: var(--faint); } .badge.warn { background: var(--warn); }
       .item .txt { flex: 1; min-width: 0; } .item .lbl { font-weight: 600; font-size: 14px; } .item .det { color: var(--muted); font-size: 12.5px; margin-top: 1px; overflow-wrap: anywhere; }
+      .vp { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; padding: 1px 7px; border-radius: 999px; margin-left: 8px; vertical-align: 1px; }
+      .vp-d { background: var(--panel-2); color: var(--faint); border: 1px solid var(--line-2); }
+      .vp-m { background: oklch(94% 0.03 250); color: oklch(45% 0.09 250); border: 1px solid oklch(88% 0.04 250); }
       .item .desc { color: var(--faint); font-size: 12.5px; margin-top: 2px; }
       .item .det { font-family: var(--font-mono); font-size: 11.5px; }
       .item a.shot { font-size: 12px; color: var(--accent); text-decoration: none; align-self: center; flex: none; border: 1px solid var(--line-2); padding: 3px 9px; border-radius: 8px; }
@@ -176,12 +179,12 @@
 
             <div id="results"></div>
 
-            <p class="section-h">¿Qué comprueba?</p>
+            <p class="section-h">¿Qué comprueba? · en escritorio y móvil</p>
             <div class="about">
-              <div class="about-card"><h3>Navegación</h3><p>La home, las colecciones y el mega-menú cargan y muestran productos.</p></div>
-              <div class="about-card"><h3>Producto y carrito</h3><p>Se abre una ficha, se puede añadir al carrito y se llega a la pantalla de pago (sin realizar ninguna compra).</p></div>
-              <div class="about-card"><h3>Buscador</h3><p>El buscador de la tienda devuelve resultados.</p></div>
-              <div class="about-card"><h3>Región</h3><p>La moneda y el idioma son los correctos de cada país (€/ES en Europa, $/EN en EE. UU.) y no hay errores graves.</p></div>
+              <div class="about-card"><h3>HOME</h3><p>La home carga y el menú se despliega (hover en escritorio, hamburguesa en móvil).</p></div>
+              <div class="about-card"><h3>COLECCIONES</h3><p>Una colección real carga y muestra sus productos.</p></div>
+              <div class="about-card"><h3>PDP</h3><p>Se abre una ficha de producto y se puede añadir al carrito.</p></div>
+              <div class="about-card"><h3>OTROS</h3><p>Se llega al pago (sin comprar), el buscador devuelve resultados, y la moneda/idioma son los correctos del país.</p></div>
             </div>
           </section>
 
@@ -327,7 +330,7 @@
         if (res.status === 409) throw new Error(start.error || 'Ya hay una validación en curso.');
         if (!res.ok || !start.runId) throw new Error(start.error || 'No se pudo arrancar la validación.');
 
-        const deadline = Date.now() + 6 * 60 * 1000; // margen amplio
+        const deadline = Date.now() + 12 * 60 * 1000; // margen amplio (corre escritorio + móvil)
         while (Date.now() < deadline) {
           await sleep(3000);
           let st;
@@ -352,7 +355,7 @@
       }
 
       function runningCard(id) {
-        return '<div class="card" id="run-' + id + '"><div class="rhead"><div class="store">' + storeName(id) + '</div><span class="verdict run"><span class="spin"></span>Probando…</span></div><div class="when">Puede tardar 1–2 min</div></div>';
+        return '<div class="card" id="run-' + id + '"><div class="rhead"><div class="store">' + storeName(id) + '</div><span class="verdict run"><span class="spin"></span>Probando…</span></div><div class="when">Escritorio + móvil · puede tardar 3–5 min</div></div>';
       }
 
       function errorCard(name, msg) {
@@ -371,7 +374,8 @@
             const cls = info ? (it.ok ? 'info' : 'warn') : it.ok ? 'ok' : 'fail';
             const sym = info ? (it.ok ? 'i' : '!') : it.ok ? '✓' : '✗';
             const desc = it.desc ? '<div class="desc">' + it.desc + '</div>' : '';
-            h += '<div class="item"><div class="badge ' + cls + '">' + sym + '</div><div class="txt"><div class="lbl">' + it.label + '</div>' + desc + '<div class="det">' + it.detail + '</div></div>' + (it.shot ? '<a class="shot" href="/runs/' + it.shot + '" target="_blank">captura</a>' : '') + '</div>';
+            const vp = it.viewport ? '<span class="vp vp-' + (it.viewport === 'Móvil' ? 'm' : 'd') + '">' + it.viewport + '</span>' : '';
+            h += '<div class="item"><div class="badge ' + cls + '">' + sym + '</div><div class="txt"><div class="lbl">' + it.label + vp + '</div>' + desc + '<div class="det">' + it.detail + '</div></div>' + (it.shot ? '<a class="shot" href="/runs/' + it.shot + '" target="_blank">captura</a>' : '') + '</div>';
           }
           h += '</div>';
         }

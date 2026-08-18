@@ -1,5 +1,6 @@
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 import { checks, discover, isChallenged } from './checks';
+import type { Discovery } from './checks';
 import { storage } from './storage';
 import type { StoreConfig } from './stores';
 
@@ -8,6 +9,8 @@ export interface ResultItem {
   label: string;
   /** Descripción breve de qué comprueba este test (en lenguaje llano). */
   desc: string;
+  /** Vista en la que se ejecutó: "Escritorio" o "Móvil". */
+  viewport?: string;
   ok: boolean;
   detail: string;
   shot: string | null; // ruta relativa a /runs, para servir la captura
@@ -178,88 +181,107 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
   // Proxy por-tienda (opcional): enruta el navegador por una IP residencial del país de la tienda,
   // para las tiendas que bloquean con bot-challenge a IPs de datacenter (p. ej. la US).
   const proxy = parseProxy(store.proxy);
+  const headers = storeHeaders(store);
   const browser = await chromium.launch({ args: ['--no-sandbox'], ...(proxy ? { proxy } : {}) });
-  const context = await browser.newContext({
-    viewport: { width: 1366, height: 900 },
-    locale: store.lang,
-    // Cabeceras del monitor: Web Bot Auth de Shopify (bot autorizado) y/o cabecera secreta genérica.
-    ...(storeHeaders(store) ? { extraHTTPHeaders: storeHeaders(store) as Record<string, string> } : {}),
-  });
-  const page = await context.newPage();
 
-  const jsErrors: string[] = [];
-  page.on('pageerror', (e) => {
-    if (!IGNORE_JS.some((s) => e.message.includes(s))) jsErrors.push(e.message);
-  });
-
-  // Descubre una colección y un producto reales del tema una sola vez; los checks los reutilizan.
-  const disco = await discover(page, store).catch(() => ({ collectionUrl: null, productUrl: null, prefix: '', how: 'error' }));
-
-  // Ejecuta un check (con su captura) y devuelve el ResultItem. `idx` fija el nombre de la captura.
-  const runCheck = async (check: (typeof checks)[number], idx: number): Promise<ResultItem> => {
-    let ok = false;
-    let detail = '';
-    try {
-      const r = await check.run({ page, store, disco });
-      ok = r.ok;
-      detail = r.detail;
-    } catch (e) {
-      ok = false;
-      detail = `error: ${e instanceof Error ? e.message : String(e)}`;
-    }
-    // Si falló Y la tienda está sirviendo un challenge anti-bot a este servidor, NO es un fallo real:
-    // no es verificable desde aquí. Se marca ámbar (info) para no dar un rojo falso.
-    let level: ResultItem['level'] = 'check';
-    if (!ok) {
-      const challengeJs = jsErrors.some((e) => e.includes('<!DOCTYPE') || e.includes('is not valid JSON'));
-      if ((await isChallenged(page).catch(() => false)) || challengeJs) {
-        level = 'info';
-        detail = `${detail} · bloqueo anti-bot: no verificable desde el servidor`;
-      }
-    }
-    let shot: string | null = null;
-    try {
-      const file = `${idx}-${check.label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
-      const png = await page.screenshot();
-      await storage.putImage(`${runId}/${file}`, png);
-      shot = `${runId}/${file}`;
-    } catch {
-      /* sin captura */
-    }
-    return { group: check.group, label: check.label, desc: check.desc, ok, detail, shot, level };
-  };
+  // Cada tienda se prueba en DOS vistas: Escritorio y Móvil (donde más se rompen los temas de Shopify).
+  const viewports = [
+    { id: 'desktop', name: 'Escritorio', mobile: false, opts: { viewport: { width: 1366, height: 900 } } },
+    { id: 'mobile', name: 'Móvil', mobile: true, opts: { ...devices['iPhone 13'] } },
+  ];
 
   const items: ResultItem[] = [];
-  for (let i = 0; i < checks.length; i++) {
-    items.push(await runCheck(checks[i], i));
-    // Pacing: separa las peticiones para no disparar el rate-limiting de la tienda en la ráfaga.
-    await page.waitForTimeout(1200);
-  }
+  let disco: Discovery | null = null; // se descubre una vez (en escritorio) y se reutiliza en móvil
 
-  // Segunda pasada: reintenta SOLO los checks que fallaron, tras una pausa de enfriamiento. Las tiendas
-  // throttlean las peticiones tardías de la ráfaga (dan resultados vacíos/challenge); el respiro deja que
-  // el límite se resetee y evita falsos negativos. Se queda con el mejor resultado de las dos pasadas.
-  const failedIdx = items.map((it, i) => (!it.ok && it.level === 'check' ? i : -1)).filter((i) => i >= 0);
-  if (failedIdx.length > 0 && failedIdx.length < checks.length) {
-    await page.waitForTimeout(10000);
-    for (const i of failedIdx) {
-      const retry = await runCheck(checks[i], i);
-      if (retry.ok) items[i] = retry;
-      await page.waitForTimeout(1500);
+  for (const vp of viewports) {
+    const context = await browser.newContext({
+      ...vp.opts,
+      locale: store.lang,
+      // Cabeceras del monitor: Web Bot Auth de Shopify (bot autorizado) y/o cabecera secreta genérica.
+      ...(headers ? { extraHTTPHeaders: headers } : {}),
+    });
+    const page = await context.newPage();
+
+    const jsErrors: string[] = [];
+    page.on('pageerror', (e) => {
+      if (!IGNORE_JS.some((s) => e.message.includes(s))) jsErrors.push(e.message);
+    });
+
+    // Descubre colección y producto reales del tema una sola vez (en escritorio); se reutilizan en móvil.
+    if (!disco) {
+      disco = await discover(page, store).catch(() => ({ collectionUrl: null, productUrl: null, prefix: '', how: 'error' }));
     }
-  }
+    const disco_ = disco;
 
-  // Informativo: errores de JS (no listados) capturados durante toda la ejecución. No cuenta para el
-  // veredicto (las tiendas tienen errores benignos preexistentes); solo avisa si aparece algo nuevo.
-  items.push({
-    group: 'Región',
-    label: 'Errores de JS en consola',
-    desc: 'Recoge los errores de JavaScript aparecidos durante la validación (informativo, no tumba el test).',
-    ok: jsErrors.length === 0,
-    detail: jsErrors.length ? `${jsErrors.length}: ${jsErrors.slice(0, 3).join(' | ')}` : 'ninguno',
-    shot: null,
-    level: 'info',
-  });
+    // Ejecuta un check (con su captura) y devuelve el ResultItem. La captura lleva el id de vista + idx.
+    const runCheck = async (check: (typeof checks)[number], idx: number): Promise<ResultItem> => {
+      const jsBefore = jsErrors.length; // para detectar challenge SOLO durante este check
+      let ok = false;
+      let detail = '';
+      try {
+        const r = await check.run({ page, store, disco: disco_, mobile: vp.mobile });
+        ok = r.ok;
+        detail = r.detail;
+      } catch (e) {
+        ok = false;
+        detail = `error: ${e instanceof Error ? e.message : String(e)}`;
+      }
+      // Si falló Y la tienda sirvió un challenge anti-bot EN ESTE check (página-challenge o un error de
+      // fetch <!DOCTYPE nuevo durante el check), NO es un fallo real: no es verificable desde aquí →
+      // ámbar (info), no rojo. Se acota al check para no sobre-marcar por un error suelto anterior.
+      let level: ResultItem['level'] = 'check';
+      if (!ok) {
+        const newJs = jsErrors.slice(jsBefore);
+        const challengeJs = newJs.some((e) => e.includes('<!DOCTYPE') || e.includes('is not valid JSON'));
+        if ((await isChallenged(page).catch(() => false)) || challengeJs) {
+          level = 'info';
+          detail = `${detail} · bloqueo anti-bot: no verificable desde el servidor`;
+        }
+      }
+      let shot: string | null = null;
+      try {
+        const file = `${vp.id}-${idx}-${check.label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`;
+        const png = await page.screenshot();
+        await storage.putImage(`${runId}/${file}`, png);
+        shot = `${runId}/${file}`;
+      } catch {
+        /* sin captura */
+      }
+      return { group: check.group, label: check.label, desc: check.desc, viewport: vp.name, ok, detail, shot, level };
+    };
+
+    const vpItems: ResultItem[] = [];
+    for (let i = 0; i < checks.length; i++) {
+      vpItems.push(await runCheck(checks[i], i));
+      await page.waitForTimeout(1200); // pacing entre peticiones
+    }
+
+    // Segunda pasada: reintenta SOLO los checks que fallaron (de verdad, no los ámbar) tras enfriar.
+    const failedIdx = vpItems.map((it, i) => (!it.ok && it.level === 'check' ? i : -1)).filter((i) => i >= 0);
+    if (failedIdx.length > 0 && failedIdx.length < checks.length) {
+      await page.waitForTimeout(10000);
+      for (const i of failedIdx) {
+        const retry = await runCheck(checks[i], i);
+        if (retry.ok) vpItems[i] = retry;
+        await page.waitForTimeout(1500);
+      }
+    }
+
+    // Informativo por vista: errores de JS de consola (no tumba el veredicto).
+    vpItems.push({
+      group: 'OTROS',
+      label: 'Errores de JS en consola',
+      desc: 'Recoge los errores de JavaScript aparecidos durante la validación (informativo, no tumba el test).',
+      viewport: vp.name,
+      ok: jsErrors.length === 0,
+      detail: jsErrors.length ? `${jsErrors.length}: ${jsErrors.slice(0, 3).join(' | ')}` : 'ninguno',
+      shot: null,
+      level: 'info',
+    });
+
+    items.push(...vpItems);
+    await context.close();
+  }
 
   await browser.close();
 

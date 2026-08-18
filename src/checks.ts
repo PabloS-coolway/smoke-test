@@ -23,6 +23,8 @@ export interface CheckCtx {
   page: Page;
   store: StoreConfig;
   disco: Discovery;
+  /** Si el check se está ejecutando en la vista móvil (para adaptar interacciones, p. ej. el menú). */
+  mobile: boolean;
 }
 export interface Check {
   group: string;
@@ -283,7 +285,7 @@ async function fromSitemap(page: Page): Promise<{ collectionUrl: string | null; 
 
 export const checks: Check[] = [
   {
-    group: 'Navegación',
+    group: 'HOME',
     label: 'La home carga',
     desc: 'Abre la página de inicio de la tienda y confirma que responde correctamente y muestra la cabecera.',
     run: async ({ page, store }) => {
@@ -295,7 +297,7 @@ export const checks: Check[] = [
     },
   },
   {
-    group: 'Navegación',
+    group: 'COLECCIONES',
     label: 'La colección carga con productos',
     desc: 'Entra en una colección real de la tienda (descubierta del propio menú) y verifica que muestra productos.',
     run: async ({ page, store, disco }) => {
@@ -306,14 +308,47 @@ export const checks: Check[] = [
     },
   },
   {
-    group: 'Navegación',
-    label: 'El mega-menú abre',
-    desc: 'Pasa el ratón por el menú principal y comprueba que se despliega mostrando más categorías.',
-    run: async ({ page, store }) => {
+    group: 'HOME',
+    label: 'El menú abre',
+    desc: 'Abre el menú principal (hover en escritorio, hamburguesa en móvil) y comprueba que muestra categorías.',
+    run: async ({ page, store, mobile }) => {
       await nav(page, store.baseUrl);
       await dismissPopups(page);
       const visibleCols = () => page.locator('a[href*="/collections/"]:visible').count();
       const baseline = await visibleCols();
+
+      if (mobile) {
+        // En móvil el menú es una hamburguesa: hay que TOCARLA para desplegar.
+        const toggles = [
+          'button[aria-label*="menu" i]',
+          'button[aria-label*="menú" i]',
+          '[aria-label*="menu" i][role="button"]',
+          'button[aria-controls*="menu" i]',
+          '.header__icon--menu',
+          '.mobile-nav-toggle',
+          'button.js-mobile-nav-toggle',
+          'summary[aria-haspopup]',
+          'header summary',
+        ];
+        let best = baseline;
+        for (const sel of toggles) {
+          try {
+            const b = page.locator(sel).first();
+            if (await b.isVisible({ timeout: 500 })) {
+              await b.click({ timeout: 1500 });
+              await page.waitForTimeout(600);
+              best = Math.max(best, await visibleCols());
+              if (best > baseline + 2) break;
+            }
+          } catch {
+            /* prueba el siguiente */
+          }
+        }
+        const opened = best > baseline + 2;
+        return { ok: opened, detail: opened ? `${best} enlaces de menú visibles` : `no se abrió el menú móvil (base ${baseline})` };
+      }
+
+      // Escritorio: hover sobre las etiquetas del menú.
       const targets: Locator[] = store.navHover.map((l) =>
         page.getByText(new RegExp(`^\\s*${l}\\s*$`, 'i')).first(),
       );
@@ -337,7 +372,7 @@ export const checks: Check[] = [
     },
   },
   {
-    group: 'PDP + carrito',
+    group: 'PDP',
     label: 'La ficha de producto carga',
     desc: 'Abre la página de un producto real y confirma que tiene su botón de añadir al carrito.',
     run: async ({ page, store, disco }) => {
@@ -350,7 +385,7 @@ export const checks: Check[] = [
     },
   },
   {
-    group: 'PDP + carrito',
+    group: 'PDP',
     label: 'Añadir al carrito funciona',
     desc: 'Pulsa «añadir al carrito» en la ficha y verifica que el contador del carrito aumenta.',
     run: async ({ page, store, disco }) => {
@@ -374,7 +409,7 @@ export const checks: Check[] = [
     },
   },
   {
-    group: 'PDP + carrito',
+    group: 'OTROS',
     label: 'El checkout es alcanzable',
     desc: 'Abre el carrito y confirma que aparece la línea de producto y el botón de pago (sin llegar a comprar).',
     run: async ({ page, store, disco }) => {
@@ -399,7 +434,7 @@ export const checks: Check[] = [
     },
   },
   {
-    group: 'Buscador',
+    group: 'OTROS',
     label: 'El buscador devuelve resultados',
     desc: 'Busca un término habitual en la tienda y comprueba que devuelve productos.',
     run: async ({ page, store, disco }) => {
@@ -409,7 +444,7 @@ export const checks: Check[] = [
     },
   },
   {
-    group: 'Región',
+    group: 'OTROS',
     label: 'Moneda e idioma correctos',
     desc: 'Comprueba que la tienda muestra el idioma y la moneda que corresponden a su país.',
     run: async ({ page, store, disco }) => {
