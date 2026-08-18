@@ -130,6 +130,16 @@ export function startRun(store: StoreConfig): string {
   return runId;
 }
 
+/** Cabecera secreta del monitor, de la env `MONITOR_HEADER` = "Nombre: valor". Vacío = ninguna. */
+function monitorHeader(): Record<string, string> | null {
+  const raw = (process.env.MONITOR_HEADER ?? '').trim();
+  const i = raw.indexOf(':');
+  if (i <= 0) return null;
+  const name = raw.slice(0, i).trim();
+  const value = raw.slice(i + 1).trim();
+  return name && value ? { [name]: value } : null;
+}
+
 /** Parsea `http://usuario:clave@host:puerto` al formato de proxy de Playwright. */
 function parseProxy(url?: string): { server: string; username?: string; password?: string } | undefined {
   if (!url) return undefined;
@@ -157,6 +167,10 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
   const context = await browser.newContext({
     viewport: { width: 1366, height: 900 },
     locale: store.lang,
+    // Cabecera secreta del monitor (opcional): el dev puede añadir una excepción en la protección
+    // anti-bot de las tiendas ("saltar challenge si llega esta cabecera") para que el monitor pase
+    // sin proxy y sin depender de IPs. Formato env MONITOR_HEADER = "Nombre: valor".
+    ...(monitorHeader() ? { extraHTTPHeaders: monitorHeader() as Record<string, string> } : {}),
   });
   const page = await context.newPage();
 
