@@ -28,6 +28,8 @@ export interface RunResult {
   passed: number;
   total: number;
   ok: boolean;
+  /** Bloques ejecutados (si fue una corrida parcial); vacío/omitido = todos. */
+  blocks?: string[];
   items: ResultItem[];
 }
 
@@ -106,8 +108,12 @@ export function jobStatus(runId: string): Job | null {
   return jobs.get(runId) ?? null;
 }
 
-/** Arranca una validación en segundo plano y devuelve su runId al instante (no bloquea). */
-export function startRun(store: StoreConfig): string {
+/** Bloques de checks disponibles (para correr solo uno). */
+export const BLOCKS = ['HOME', 'COLECCIONES', 'PDP', 'OTROS'] as const;
+
+/** Arranca una validación en segundo plano y devuelve su runId al instante (no bloquea).
+ *  `blocks` opcional limita a esos bloques (p. ej. solo HOME); vacío = todos. */
+export function startRun(store: StoreConfig, blocks?: string[]): string {
   const runId = `${store.id}-${Date.now()}`;
   const job: Job = {
     runId,
@@ -117,7 +123,7 @@ export function startRun(store: StoreConfig): string {
     startedAt: new Date().toISOString(),
   };
   jobs.set(runId, job);
-  void runStore(store, runId)
+  void runStore(store, runId, blocks)
     .then(() => {
       job.status = 'done';
     })
@@ -174,9 +180,11 @@ function parseProxy(url?: string): { server: string; username?: string; password
   }
 }
 
-/** Corre todos los checks contra una tienda y devuelve el informe (con capturas). */
-export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.now()}`): Promise<RunResult> {
+/** Corre los checks contra una tienda y devuelve el informe (con capturas). `blocks` limita a esos
+ *  bloques (HOME/COLECCIONES/PDP/OTROS); vacío/omitido = todos. */
+export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.now()}`, blocks?: string[]): Promise<RunResult> {
   const started = Date.now();
+  const activeChecks = blocks && blocks.length ? checks.filter((c) => blocks.includes(c.group)) : checks;
 
   // Proxy por-tienda (opcional): enruta el navegador por una IP residencial del país de la tienda,
   // para las tiendas que bloquean con bot-challenge a IPs de datacenter (p. ej. la US).
@@ -251,17 +259,17 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
     };
 
     const vpItems: ResultItem[] = [];
-    for (let i = 0; i < checks.length; i++) {
-      vpItems.push(await runCheck(checks[i], i));
+    for (let i = 0; i < activeChecks.length; i++) {
+      vpItems.push(await runCheck(activeChecks[i], i));
       await page.waitForTimeout(500); // pacing corto (Web Bot Auth ya da rate limits altos)
     }
 
     // Segunda pasada: reintenta SOLO los checks que fallaron (de verdad, no los ámbar) tras enfriar.
     const failedIdx = vpItems.map((it, i) => (!it.ok && it.level === 'check' ? i : -1)).filter((i) => i >= 0);
-    if (failedIdx.length > 0 && failedIdx.length < checks.length) {
+    if (failedIdx.length > 0 && failedIdx.length < activeChecks.length) {
       await page.waitForTimeout(5000);
       for (const i of failedIdx) {
-        const retry = await runCheck(checks[i], i);
+        const retry = await runCheck(activeChecks[i], i);
         if (retry.ok) vpItems[i] = retry;
         await page.waitForTimeout(800);
       }
@@ -299,6 +307,7 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
     passed,
     total,
     ok: passed === total,
+    blocks: blocks && blocks.length ? blocks : undefined,
     items,
   };
   await storage.putJson(`${runId}/result.json`, result);

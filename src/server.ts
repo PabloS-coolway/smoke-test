@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { stores, storeById } from './stores';
-import { getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
+import { BLOCKS, getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
 import { storage } from './storage';
 import { authEnabled, clearSession, isAuthed, requireAuth, setSession, checkPassword } from './auth';
 
@@ -48,6 +48,7 @@ app.get('/runs/:runId/:file', requireAuth, async (req, res) => {
 app.get('/api/stores', requireAuth, (_req, res) => {
   res.json({
     needsPassword: authEnabled(),
+    blocks: BLOCKS,
     stores: stores().map((s) => ({ id: s.id, name: s.name, baseUrl: s.baseUrl })),
   });
 });
@@ -83,13 +84,15 @@ app.get('/api/run/:runId', requireAuth, async (req, res) => {
  * `/api/run/:runId`. Se hace así porque una corrida tarda más que el timeout de request de DO (~60 s).
  */
 app.post('/api/run', requireAuth, (req, res) => {
-  const id = String((req.body as { store?: string })?.store ?? '');
+  const body = (req.body ?? {}) as { store?: string; blocks?: string[] };
+  const id = String(body.store ?? '');
   const store = storeById(id);
   if (!store) return res.status(400).json({ error: `Tienda desconocida: "${id}".` });
   if (isBusy()) {
     return res.status(409).json({ error: 'Ya hay una validación en curso. Espera a que termine.' });
   }
-  const runId = startRun(store);
+  const blocks = Array.isArray(body.blocks) ? body.blocks.filter((b) => (BLOCKS as readonly string[]).includes(b)) : undefined;
+  const runId = startRun(store, blocks);
   return res.status(202).json({ runId, storeName: store.name });
 });
 

@@ -120,13 +120,24 @@
       .vp-d { background: var(--panel-2); color: var(--faint); border: 1px solid var(--line-2); }
       .vp-m { background: oklch(94% 0.03 250); color: oklch(45% 0.09 250); border: 1px solid oklch(88% 0.04 250); }
 
-      /* Filtro por vista (Todo / Escritorio / Móvil) */
-      .vpfilter { display: inline-flex; gap: 2px; margin-top: var(--sp-3); padding: 3px; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px; }
-      .vpf { font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); background: none; border: 0; border-radius: 7px; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
-      .vpf:hover { color: var(--ink); }
-      .vpf.active { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px oklch(24% 0.012 265 / 0.08); }
-      .card[data-vp="d"] .item[data-vp="m"], .card[data-vp="m"] .item[data-vp="d"] { display: none; }
-      .card[data-vp="d"] .grp:not(:has(.item[data-vp="d"])), .card[data-vp="m"] .grp:not(:has(.item[data-vp="m"])) { display: none; }
+      /* Selector de bloque en Lanzar (Todo · HOME · COLECCIONES · PDP · OTROS) */
+      .blockseg { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+      .blk { font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: var(--panel); border: 1px solid var(--line-2); border-radius: 999px; padding: 7px 15px; cursor: pointer; }
+      .blk:hover { background: var(--panel-2); color: var(--ink); }
+      .blk.active { background: var(--accent); color: var(--paper); border-color: var(--accent); }
+
+      /* Cabecera de Resultados con el selector de vista fijo */
+      .res-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+      .res-head h1 { margin: 0; }
+      .vpseg { display: inline-flex; gap: 2px; padding: 3px; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 11px; }
+      .vps { font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: none; border: 0; border-radius: 8px; padding: 7px 14px; cursor: pointer; white-space: nowrap; }
+      .vps:hover { color: var(--ink); }
+      .vps.active { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px oklch(24% 0.012 265 / 0.08); }
+      .res-empty { color: var(--muted); font-size: 14px; padding: var(--sp-8) var(--sp-4); text-align: center; border: 1px dashed var(--line-2); border-radius: var(--radius); }
+
+      /* El selector de vista filtra TODO el área de resultados (no un toggle por tarjeta) */
+      #results[data-vp="d"] .item[data-vp="m"], #results[data-vp="m"] .item[data-vp="d"] { display: none; }
+      #results[data-vp="d"] .grp:not(:has(.item[data-vp="d"])), #results[data-vp="m"] .grp:not(:has(.item[data-vp="m"])) { display: none; }
       .item .desc { color: var(--faint); font-size: 12.5px; margin-top: 2px; }
       .item .det { font-family: var(--font-mono); font-size: 11.5px; }
       .item a.shot { font-size: 12px; color: var(--accent); text-decoration: none; align-self: center; flex: none; border: 1px solid var(--line-2); padding: 3px 9px; border-radius: 8px; }
@@ -169,6 +180,7 @@
         <div class="brand"><span class="mark" aria-hidden="true"></span><b>Test de tiendas</b></div>
         <nav class="nav">
           <button class="nav-item active" data-view="lanzar"><span class="n-ico"></span>Lanzar validación</button>
+          <button class="nav-item" data-view="resultados"><span class="n-ico"></span>Resultados</button>
           <button class="nav-item" data-view="historial"><span class="n-ico"></span>Historial<span class="n-count" id="histCount"></span></button>
         </nav>
         <button id="logout" class="logout" style="display:none">Cerrar sesión</button>
@@ -179,21 +191,37 @@
           <!-- Vista: Lanzar -->
           <section class="view active" data-view="lanzar">
             <h1>Validar las tiendas</h1>
-            <p class="lead">Comprueba en un minuto que las funcionalidades clave de las tiendas siguen funcionando. Lánzalo después de cada cambio o deploy.</p>
+            <p class="lead">Comprueba que las funcionalidades clave de las tiendas siguen funcionando, en escritorio y móvil. Lánzalo después de cada cambio o deploy.</p>
 
-            <p class="section-h">Lanzar validación</p>
             <div class="busy-banner" id="busyBanner" style="display:none"></div>
+
+            <p class="section-h">¿Qué quieres probar?</p>
+            <div class="blockseg" id="blockseg"></div>
+
+            <p class="section-h">Lanzar en</p>
             <div class="launch" id="launch"></div>
 
-            <div id="results"></div>
-
-            <p class="section-h">¿Qué comprueba? · en escritorio y móvil</p>
+            <p class="section-h">Los bloques</p>
             <div class="about">
-              <div class="about-card"><h3>HOME</h3><p>La home carga y el menú se despliega (hover en escritorio, hamburguesa en móvil).</p></div>
+              <div class="about-card"><h3>HOME</h3><p>La home carga y el menú funciona (hover en escritorio, hamburguesa en móvil).</p></div>
               <div class="about-card"><h3>COLECCIONES</h3><p>Una colección real carga y muestra sus productos.</p></div>
               <div class="about-card"><h3>PDP</h3><p>Se abre una ficha de producto y se puede añadir al carrito.</p></div>
               <div class="about-card"><h3>OTROS</h3><p>Se llega al pago (sin comprar), el buscador devuelve resultados, y la moneda/idioma son los correctos del país.</p></div>
             </div>
+          </section>
+
+          <!-- Vista: Resultados -->
+          <section class="view" data-view="resultados">
+            <div class="res-head">
+              <h1>Resultados</h1>
+              <div class="vpseg" id="vpseg">
+                <button class="vps active" data-vp="d">Escritorio</button>
+                <button class="vps" data-vp="m">Móvil</button>
+                <button class="vps" data-vp="all">Ambos</button>
+              </div>
+            </div>
+            <div id="results" data-vp="d"></div>
+            <div class="res-empty" id="resEmpty">Aún no hay resultados. Lanza una validación desde «Lanzar validación».</div>
           </section>
 
           <!-- Vista: Historial -->
@@ -201,7 +229,6 @@
             <h1>Historial</h1>
             <p class="lead">Cada validación queda registrada. Pulsa una fila para ver su informe completo.</p>
             <div id="histTable"></div>
-            <div id="histDetail"></div>
           </section>
         </div>
       </main>
@@ -210,6 +237,8 @@
     <script>
       const $ = (s) => document.querySelector(s);
       let STORES = [];
+      let BLOCKS = [];
+      let selectedBlock = null; // null = Todo; o un bloque concreto
 
       // Arranque: decide si mostrar el login o la app según la sesión.
       async function init() {
@@ -242,6 +271,26 @@
         const cfg = await fetch('/api/stores').then((r) => r.json());
         if (cfg.needsPassword) $('#logout').style.display = 'block';
         STORES = cfg.stores;
+        BLOCKS = cfg.blocks || [];
+
+        // Selector de bloque: Todo + un chip por bloque (single-select).
+        const seg = $('#blockseg');
+        seg.innerHTML = '';
+        const mkChip = (label, block) => {
+          const b = document.createElement('button');
+          b.className = 'blk' + (block === selectedBlock ? ' active' : '');
+          b.textContent = label;
+          b.onclick = () => {
+            selectedBlock = block;
+            seg.querySelectorAll('.blk').forEach((x) => x.classList.remove('active'));
+            b.classList.add('active');
+          };
+          return b;
+        };
+        seg.appendChild(mkChip('Todo', null));
+        for (const bl of BLOCKS) seg.appendChild(mkChip(bl, bl));
+
+        // Tiendas: una fila por tienda con su botón (corre el bloque seleccionado).
         const launch = $('#launch');
         launch.innerHTML = '';
         for (const s of STORES) {
@@ -264,6 +313,13 @@
         if (STORES.length === 0) launch.innerHTML = '<div class="l-item"><span class="err">No hay tiendas configuradas (STORE_EU_URL / STORE_US_URL).</span></div>';
 
         document.querySelectorAll('.nav-item').forEach((n) => (n.onclick = () => setView(n.dataset.view)));
+        // Selector de vista fijo (Escritorio / Móvil / Ambos) sobre todo el área de resultados.
+        $('#vpseg').querySelectorAll('.vps').forEach((btn) => {
+          btn.onclick = () => {
+            $('#vpseg').querySelectorAll('.vps').forEach((x) => x.classList.toggle('active', x === btn));
+            $('#results').dataset.vp = btn.dataset.vp;
+          };
+        });
         loadHistory();
         syncBusy();
         if (!busyTimer) busyTimer = setInterval(syncBusy, 4000);
@@ -303,6 +359,8 @@
         if (v === 'historial') loadHistory();
       }
 
+      function showResults() { $('#resEmpty').style.display = 'none'; setView('resultados'); }
+
       function setBusy(b) { document.querySelectorAll('#launch button').forEach((x) => (x.disabled = b)); }
       function storeName(id) { return (STORES.find((s) => s.id === id) || {}).name || id; }
 
@@ -317,6 +375,7 @@
         $('#busyBanner').textContent = 'Validación en curso. No lances otra hasta que termine.';
         $('#busyBanner').style.display = 'flex';
         $('#results').innerHTML = ids.map(runningCard).join('');
+        showResults(); // lleva al usuario a la pantalla de Resultados
         for (const id of ids) {
           try {
             await runOne(id);
@@ -332,7 +391,8 @@
 
       // Arranca la validación y sondea su estado (las corridas superan el timeout de request del proxy).
       async function runOne(id) {
-        const res = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store: id }) });
+        const blocks = selectedBlock ? [selectedBlock] : [];
+        const res = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store: id, blocks }) });
         if (res.status === 401) { showLogin(); throw new Error('Sesión caducada, vuelve a entrar.'); }
         const start = await safeJson(res);
         if (res.status === 409) throw new Error(start.error || 'Ya hay una validación en curso.');
@@ -374,21 +434,9 @@
         const groups = {};
         for (const it of d.items) (groups[it.group] ||= []).push(it);
         const when = new Date(d.startedAt).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        const blk = d.blocks && d.blocks.length ? ' · solo ' + d.blocks.join(', ') : '';
 
-        // Filtro por vista (si la corrida tiene escritorio/móvil), con el marcador de cada una.
-        const chk = d.items.filter((i) => i.level === 'check');
-        const cnt = (vp) => chk.filter((i) => i.viewport === vp).length;
-        const pass = (vp) => chk.filter((i) => i.viewport === vp && i.ok).length;
-        const hasVp = d.items.some((i) => i.viewport);
-        const filter = hasVp
-          ? '<div class="vpfilter">' +
-            '<button class="vpf active" onclick="vpFilter(this,\'all\')">Todo</button>' +
-            '<button class="vpf" onclick="vpFilter(this,\'d\')">🖥️ Escritorio ' + pass('Escritorio') + '/' + cnt('Escritorio') + '</button>' +
-            '<button class="vpf" onclick="vpFilter(this,\'m\')">📱 Móvil ' + pass('Móvil') + '/' + cnt('Móvil') + '</button>' +
-            '</div>'
-          : '';
-
-        let h = '<div class="card"><div class="rhead"><div class="store">' + d.storeName + '<span class="url">' + d.baseUrl.replace(/^https?:\/\//, '') + '</span></div><span class="verdict ' + (d.ok ? 'ok' : 'fail') + '">' + (d.ok ? 'TODO OK' : 'HAY FALLOS') + ' · ' + d.passed + '/' + d.total + '</span></div><div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s</div>' + filter;
+        let h = '<div class="card"><div class="rhead"><div class="store">' + d.storeName + '<span class="url">' + d.baseUrl.replace(/^https?:\/\//, '') + '</span></div><span class="verdict ' + (d.ok ? 'ok' : 'fail') + '">' + (d.ok ? 'TODO OK' : 'HAY FALLOS') + ' · ' + d.passed + '/' + d.total + '</span></div><div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s' + blk + '</div>';
         for (const [g, items] of Object.entries(groups)) {
           h += '<div class="grp"><h4>' + g + '</h4>';
           for (const it of items) {
@@ -404,14 +452,6 @@
         }
         return h + '</div>';
       }
-
-      // Filtra un informe por vista (Todo / Escritorio / Móvil). CSS oculta lo que no toca.
-      function vpFilter(btn, mode) {
-        const card = btn.closest('.card');
-        card.dataset.vp = mode;
-        card.querySelectorAll('.vpf').forEach((b) => b.classList.toggle('active', b === btn));
-      }
-      window.vpFilter = vpFilter;
 
       async function loadHistory() {
         const list = await fetch('/api/history').then((r) => r.json()).catch(() => []);
@@ -431,9 +471,9 @@
       async function showRun(runId, el) {
         const d = await fetch('/api/run/' + runId).then((r) => (r.ok ? r.json() : null)).catch(() => null);
         if (!d) return;
-        $('#histDetail').innerHTML = card(d);
+        $('#results').innerHTML = card(d); // el informe se ve en la pantalla de Resultados
         document.querySelectorAll('.htable tbody tr').forEach((x) => x.classList.toggle('active', x === el));
-        $('#histDetail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        showResults();
       }
       window.showRun = showRun;
 
