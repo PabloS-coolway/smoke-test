@@ -493,23 +493,27 @@ export const checks: Check[] = [
         const hrefs = Array.from(document.querySelectorAll('a[href]'))
           .map((a) => (a as HTMLAnchorElement).href)
           .filter((h) => h.startsWith(origin) && !skip.test(h));
-        const unique = Array.from(new Set(hrefs)).slice(0, 25);
-        const broken: string[] = [];
+        const unique = Array.from(new Set(hrefs)).slice(0, 15);
+        const broken: string[] = []; // roto de verdad: 404/410/5xx
+        const limited: string[] = []; // 429/403: la tienda nos limitó, NO es un enlace roto
         for (const u of unique) {
           try {
             const resp = await fetch(u, { method: 'HEAD', redirect: 'follow' });
-            if (resp.status >= 400) broken.push(u.replace(origin, '') + ' (' + resp.status + ')');
+            const p = u.replace(origin, '');
+            if (resp.status === 404 || resp.status === 410 || resp.status >= 500) broken.push(p + ' (' + resp.status + ')');
+            else if (resp.status === 429 || resp.status === 403) limited.push(p + ' (' + resp.status + ')');
           } catch {
-            /* fallo de red puntual: no lo contamos como roto */
+            /* fallo de red puntual: no lo contamos */
           }
+          await new Promise((res) => setTimeout(res, 250)); // pausa para no disparar rate-limit (429)
         }
-        return { checked: unique.length, broken };
+        return { checked: unique.length, broken, limited };
       });
       const ok = r.broken.length === 0;
-      return {
-        ok,
-        detail: `${r.checked} enlaces revisados · ${r.broken.length} roto(s)${r.broken.length ? ': ' + r.broken.slice(0, 3).join(', ') : ''}`,
-      };
+      let detail = `${r.checked} revisados · ${r.broken.length} roto(s)`;
+      if (r.broken.length) detail += ': ' + r.broken.slice(0, 3).join(', ');
+      if (r.limited.length) detail += ` · ${r.limited.length} no verificable(s) (la tienda limitó, no rotos)`;
+      return { ok, detail };
     },
   },
   {
