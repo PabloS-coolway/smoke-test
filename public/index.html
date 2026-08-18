@@ -138,6 +138,9 @@
       .blk { font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: var(--panel); border: 1px solid var(--line-2); border-radius: 999px; padding: 7px 15px; cursor: pointer; }
       .blk:hover { background: var(--panel-2); color: var(--ink); }
       .blk.active { background: var(--accent); color: var(--paper); border-color: var(--accent); }
+      .blk-sep { width: 1px; align-self: stretch; background: var(--line-2); margin: 2px var(--sp-1); }
+      .blk-test { border-style: dashed; color: var(--faint); }
+      .blk-test.active { background: var(--accent); color: var(--paper); border-style: solid; border-color: var(--accent); }
 
       /* Cabecera de Resultados con el selector de vista fijo */
       .res-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-4); }
@@ -285,13 +288,14 @@
         if (cfg.needsPassword) $('#logout').style.display = 'block';
         STORES = cfg.stores;
         BLOCKS = cfg.blocks || [];
+        const CHIPS = cfg.chips || [];
 
-        // Selector de bloque: Todo + un chip por bloque (single-select).
+        // Selector: Todo + un chip por bloque + chips de tests sueltos (single-select).
         const seg = $('#blockseg');
         seg.innerHTML = '';
-        const mkChip = (label, block) => {
+        const mkChip = (label, block, cls) => {
           const b = document.createElement('button');
-          b.className = 'blk' + (block === selectedBlock ? ' active' : '');
+          b.className = 'blk ' + (cls || '') + (block === selectedBlock ? ' active' : '');
           b.textContent = label;
           b.onclick = () => {
             selectedBlock = block;
@@ -302,6 +306,10 @@
         };
         seg.appendChild(mkChip('Todo', null));
         for (const bl of BLOCKS) seg.appendChild(mkChip(bl, bl));
+        if (CHIPS.length) {
+          const sep = document.createElement('span'); sep.className = 'blk-sep'; seg.appendChild(sep);
+          for (const c of CHIPS) seg.appendChild(mkChip(c.chip, c.value, 'blk-test'));
+        }
 
         // Tiendas: una fila por tienda con su botón (corre el bloque seleccionado).
         const launch = $('#launch');
@@ -328,10 +336,7 @@
         document.querySelectorAll('.nav-item').forEach((n) => (n.onclick = () => setView(n.dataset.view)));
         // Selector de vista fijo (Escritorio / Móvil / Ambos) sobre todo el área de resultados.
         $('#vpseg').querySelectorAll('.vps').forEach((btn) => {
-          btn.onclick = () => {
-            $('#vpseg').querySelectorAll('.vps').forEach((x) => x.classList.toggle('active', x === btn));
-            $('#results').dataset.vp = btn.dataset.vp;
-          };
+          btn.onclick = () => applyViewport(btn.dataset.vp);
         });
         loadHistory();
         syncBusy();
@@ -373,6 +378,26 @@
       }
 
       function showResults() { $('#resEmpty').style.display = 'none'; setView('resultados'); }
+
+      function curVp() { const a = $('#vpseg .vps.active'); return (a && a.dataset.vp) || 'd'; }
+
+      // Aplica la vista seleccionada a TODO el área de resultados: filtra las líneas y recalcula el
+      // badge (fallos/total) de cada informe según la vista (Escritorio / Móvil / Ambos).
+      function applyViewport(vp) {
+        $('#results').dataset.vp = vp;
+        $('#vpseg').querySelectorAll('.vps').forEach((b) => b.classList.toggle('active', b.dataset.vp === vp));
+        const key = vp === 'all' ? 'call' : 'c' + vp;
+        document.querySelectorAll('#results .card[data-call]').forEach((card) => {
+          const raw = card.dataset[key] || card.dataset.call || '0/0/0';
+          const [pass, tot, ok] = raw.split('/');
+          const v = card.querySelector('.verdict');
+          if (!v || v.classList.contains('run')) return;
+          if (tot === '0') { v.className = 'verdict run'; v.textContent = 'sin datos en esta vista'; return; }
+          v.className = 'verdict ' + (ok === '1' ? 'ok' : 'fail');
+          v.textContent = (ok === '1' ? 'TODO OK' : 'HAY FALLOS') + ' · ' + pass + '/' + tot;
+        });
+      }
+      window.applyViewport = applyViewport;
 
       function setBusy(b) { document.querySelectorAll('#launch button').forEach((x) => (x.disabled = b)); }
       function storeName(id) { return (STORES.find((s) => s.id === id) || {}).name || id; }
@@ -450,7 +475,21 @@
         const blk = d.blocks && d.blocks.length ? ' · solo ' + d.blocks.join(', ') : '';
         const perf = d.perf ? ' · carga ' + (d.perf.loadMs / 1000).toFixed(1) + ' s · TTFB ' + d.perf.ttfbMs + ' ms' : '';
 
-        let h = '<div class="card"><div class="rhead"><div class="store">' + d.storeName + '<span class="url">' + d.baseUrl.replace(/^https?:\/\//, '') + '</span></div><span class="verdict ' + (d.ok ? 'ok' : 'fail') + '">' + (d.ok ? 'TODO OK' : 'HAY FALLOS') + ' · ' + d.passed + '/' + d.total + '</span></div><div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s' + blk + perf + '</div>';
+        // Cuentas por vista (Escritorio/Móvil/Ambos) para que el badge cambie con el selector.
+        const chk = d.items.filter((i) => i.level === 'check');
+        const pack = (f) => {
+          const its = f === 'all' ? chk : chk.filter((i) => (i.viewport === 'Móvil' ? 'm' : 'd') === f);
+          const pass = its.filter((i) => i.ok).length;
+          return pass + '/' + its.length + '/' + (its.length && pass === its.length ? 1 : 0);
+        };
+        const cd = pack('d'), cm = pack('m'), call = pack('all');
+        const vp = curVp();
+        const [cp, ct, cok] = (vp === 'm' ? cm : vp === 'all' ? call : cd).split('/');
+        const verdict = ct === '0'
+          ? '<span class="verdict run">sin datos en esta vista</span>'
+          : '<span class="verdict ' + (cok === '1' ? 'ok' : 'fail') + '">' + (cok === '1' ? 'TODO OK' : 'HAY FALLOS') + ' · ' + cp + '/' + ct + '</span>';
+
+        let h = '<div class="card" data-cd="' + cd + '" data-cm="' + cm + '" data-call="' + call + '"><div class="rhead"><div class="store">' + d.storeName + '<span class="url">' + d.baseUrl.replace(/^https?:\/\//, '') + '</span></div>' + verdict + '</div><div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s' + blk + perf + '</div>';
         for (const [g, items] of Object.entries(groups)) {
           h += '<div class="grp"><h4>' + g + '</h4>';
           for (const it of items) {

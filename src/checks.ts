@@ -35,6 +35,8 @@ export interface Check {
   once?: boolean;
   /** Métrica informativa: se muestra pero NO cuenta para el veredicto (ámbar/neutro, nunca rojo). */
   info?: boolean;
+  /** Si se define, este check aparece como un CHIP propio en «¿qué quieres probar?» (correr solo él). */
+  chip?: string;
   run: (c: CheckCtx) => Promise<{ ok: boolean; detail: string }>;
 }
 
@@ -481,6 +483,7 @@ export const checks: Check[] = [
     label: 'Sin enlaces rotos',
     desc: 'Revisa una muestra de enlaces internos (menú, footer…) y comprueba que ninguno lleva a un 404.',
     once: true,
+    chip: 'Enlaces rotos',
     run: async ({ page, store }) => {
       await nav(page, store.baseUrl);
       await dismissPopups(page);
@@ -515,6 +518,7 @@ export const checks: Check[] = [
     desc: 'Cuenta cuántos productos de la colección aparecen agotados (informativo, no es un fallo).',
     once: true,
     info: true,
+    chip: 'Stock',
     run: async ({ page, disco }) => {
       if (!disco.collectionUrl) return { ok: true, detail: 'sin colección que revisar' };
       await nav(page, disco.collectionUrl);
@@ -538,6 +542,7 @@ export const checks: Check[] = [
     label: 'Redirecciones correctas',
     desc: 'Comprueba que http lleva a https y muestra el mercado/idioma por región que aplica la tienda.',
     once: true,
+    chip: 'Redirects',
     run: async ({ page, store, disco }) => {
       let httpsOk = false;
       let landed = '';

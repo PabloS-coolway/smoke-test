@@ -135,6 +135,14 @@ export function jobStatus(runId: string): Job | null {
 /** Bloques de checks disponibles (para correr solo uno). */
 export const BLOCKS = ['HOME', 'COLECCIONES', 'PDP', 'OTROS'] as const;
 
+/** Tests concretos que se pueden correr sueltos como chip ({chip: etiqueta corta, value: label del check}). */
+export const CHIPS = checks
+  .filter((c) => c.chip)
+  .map((c) => ({ chip: c.chip as string, value: c.label }));
+
+/** Todos los selectores válidos para `blocks` (grupos + labels de chip). */
+export const SELECTORS: string[] = [...BLOCKS, ...CHIPS.map((c) => c.value)];
+
 /** Arranca una validación en segundo plano y devuelve su runId al instante (no bloquea).
  *  `blocks` opcional limita a esos bloques (p. ej. solo HOME); vacío = todos. */
 export function startRun(store: StoreConfig, blocks?: string[]): string {
@@ -229,7 +237,9 @@ async function measurePerf(page: import('playwright').Page, store: StoreConfig):
  *  bloques (HOME/COLECCIONES/PDP/OTROS); vacío/omitido = todos. */
 export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.now()}`, blocks?: string[]): Promise<RunResult> {
   const started = Date.now();
-  const activeChecks = blocks && blocks.length ? checks.filter((c) => blocks.includes(c.group)) : checks;
+  // `blocks` puede traer nombres de bloque (HOME…) o labels de un check concreto (chip suelto).
+  const activeChecks =
+    blocks && blocks.length ? checks.filter((c) => blocks.includes(c.group) || blocks.includes(c.label)) : checks;
 
   // Proxy por-tienda (opcional): enruta el navegador por una IP residencial del país de la tienda,
   // para las tiendas que bloquean con bot-challenge a IPs de datacenter (p. ej. la US).

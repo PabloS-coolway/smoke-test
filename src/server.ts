@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { stores, storeById } from './stores';
-import { BLOCKS, deleteRun, getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
+import { BLOCKS, CHIPS, SELECTORS, deleteRun, getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
 import { storage } from './storage';
 import { authEnabled, clearSession, isAuthed, requireAuth, setSession, checkPassword } from './auth';
 
@@ -49,6 +49,7 @@ app.get('/api/stores', requireAuth, (_req, res) => {
   res.json({
     needsPassword: authEnabled(),
     blocks: BLOCKS,
+    chips: CHIPS, // tests sueltos: [{ chip, value }]
     stores: stores().map((s) => ({ id: s.id, name: s.name, baseUrl: s.baseUrl })),
   });
 });
@@ -98,7 +99,7 @@ app.post('/api/run', requireAuth, (req, res) => {
   if (isBusy()) {
     return res.status(409).json({ error: 'Ya hay una validación en curso. Espera a que termine.' });
   }
-  const blocks = Array.isArray(body.blocks) ? body.blocks.filter((b) => (BLOCKS as readonly string[]).includes(b)) : undefined;
+  const blocks = Array.isArray(body.blocks) ? body.blocks.filter((b) => SELECTORS.includes(b)) : undefined;
   const runId = startRun(store, blocks);
   return res.status(202).json({ runId, storeName: store.name });
 });
