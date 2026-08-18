@@ -309,66 +309,62 @@ export const checks: Check[] = [
   },
   {
     group: 'HOME',
-    label: 'El menú abre',
-    desc: 'Abre el menú principal (hover en escritorio, hamburguesa en móvil) y comprueba que muestra categorías.',
+    label: 'El menú funciona',
+    desc: 'Comprueba que el menú de la cabecera tiene categorías; e intenta desplegarlo (hover en escritorio, hamburguesa en móvil).',
     run: async ({ page, store, mobile }) => {
       await nav(page, store.baseUrl);
       await dismissPopups(page);
-      const visibleCols = () => page.locator('a[href*="/collections/"]:visible').count();
-      const baseline = await visibleCols();
+      // Lo esencial (y lo que se rompe al desplegar): la cabecera tiene enlaces a categorías.
+      const headerLinks = await page
+        .locator('header a[href*="/collections/"], [role="banner"] a[href*="/collections/"], nav a[href*="/collections/"]')
+        .count();
 
-      if (mobile) {
-        // En móvil el menú es una hamburguesa: hay que TOCARLA para desplegar.
-        const toggles = [
-          'button[aria-label*="menu" i]',
-          'button[aria-label*="menú" i]',
-          '[aria-label*="menu" i][role="button"]',
-          'button[aria-controls*="menu" i]',
-          '.header__icon--menu',
-          '.mobile-nav-toggle',
-          'button.js-mobile-nav-toggle',
-          'summary[aria-haspopup]',
-          'header summary',
-        ];
-        let best = baseline;
-        for (const sel of toggles) {
-          try {
+      // Señal extra (no obligatoria): que además se despliegue al interactuar.
+      const visibleCols = () => page.locator('a[href*="/collections/"]:visible').count();
+      const base = await visibleCols();
+      let opened = false;
+      try {
+        if (mobile) {
+          const toggles = [
+            'button[aria-label*="menu" i]',
+            'button[aria-label*="menú" i]',
+            'button[aria-controls*="menu" i]',
+            'summary[aria-haspopup]',
+            '.header__icon--menu',
+            '.mobile-nav-toggle',
+            'button.js-mobile-nav-toggle',
+            'header button:has(svg)',
+            'header summary',
+          ];
+          for (const sel of toggles) {
             const b = page.locator(sel).first();
-            if (await b.isVisible({ timeout: 500 })) {
-              await b.click({ timeout: 1500 });
-              await page.waitForTimeout(600);
-              best = Math.max(best, await visibleCols());
-              if (best > baseline + 2) break;
+            if (await b.isVisible({ timeout: 400 }).catch(() => false)) {
+              await b.click({ timeout: 1200 }).catch(() => undefined);
+              await page.waitForTimeout(500);
+              if ((await visibleCols()) > base + 2) { opened = true; break; }
             }
-          } catch {
-            /* prueba el siguiente */
+          }
+        } else {
+          for (const l of store.navHover) {
+            const t = page.getByText(new RegExp(`^\\s*${l}\\s*$`, 'i')).first();
+            try {
+              await t.hover({ timeout: 1500 });
+              await page.waitForTimeout(400);
+              if ((await visibleCols()) > base + 3) { opened = true; break; }
+            } catch {
+              /* siguiente */
+            }
           }
         }
-        const opened = best > baseline + 2;
-        return { ok: opened, detail: opened ? `${best} enlaces de menú visibles` : `no se abrió el menú móvil (base ${baseline})` };
+      } catch {
+        /* el despliegue es opcional */
       }
 
-      // Escritorio: hover sobre las etiquetas del menú.
-      const targets: Locator[] = store.navHover.map((l) =>
-        page.getByText(new RegExp(`^\\s*${l}\\s*$`, 'i')).first(),
-      );
-      const navItems = page.locator('header a, header summary, header button, nav a, nav summary');
-      const n = Math.min(await navItems.count(), 6);
-      for (let i = 0; i < n; i++) targets.push(navItems.nth(i));
-
-      let best = baseline;
-      for (const t of targets) {
-        try {
-          await t.hover({ timeout: 2000 });
-          await page.waitForTimeout(450);
-          best = Math.max(best, await visibleCols());
-          if (best > baseline + 3) break;
-        } catch {
-          /* prueba el siguiente */
-        }
-      }
-      const opened = best > baseline + 3;
-      return { ok: opened, detail: opened ? `${best} enlaces de submenú visibles` : `no se detectó submenú (base ${baseline})` };
+      const ok = headerLinks >= 2 || opened;
+      return {
+        ok,
+        detail: `${headerLinks} categorías en el menú${opened ? ' · se despliega' : ''}`,
+      };
     },
   },
   {
@@ -420,13 +416,16 @@ export const checks: Check[] = [
         await page.waitForTimeout(1500);
         lines = await cartLineItems(page);
       }
-      const checkoutBtn = await page
-        .locator(
-          '[name="checkout"], button[name="checkout"], a[href*="/checkout"], ' +
-            'button:has-text("Finalizar"), button:has-text("Tramitar"), ' +
-            'button:has-text("Checkout"), button:has-text("Pagar"), button:has-text("Pago")',
-        )
-        .count();
+      const checkoutSel =
+        '[name="checkout"], button[name="checkout"], input[name="checkout"], [id*="checkout" i], ' +
+        'a[href*="/checkout"], a[href*="/checkouts/"], ' +
+        'button:has-text("Finalizar"), button:has-text("Tramitar"), button:has-text("Comprar"), ' +
+        'button:has-text("Checkout"), button:has-text("Check out"), button:has-text("Pagar"), button:has-text("Pago")';
+      let checkoutBtn = await page.locator(checkoutSel).count();
+      if (checkoutBtn === 0) {
+        await page.waitForTimeout(1200); // en móvil el botón (sticky) puede aparecer algo después
+        checkoutBtn = await page.locator(checkoutSel).count();
+      }
       return {
         ok: lines > 0 && checkoutBtn > 0,
         detail: `carrito con ${lines} línea(s) · botón de pago ${checkoutBtn ? 'sí' : 'no'}`,

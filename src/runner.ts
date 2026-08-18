@@ -253,17 +253,17 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
     const vpItems: ResultItem[] = [];
     for (let i = 0; i < checks.length; i++) {
       vpItems.push(await runCheck(checks[i], i));
-      await page.waitForTimeout(1200); // pacing entre peticiones
+      await page.waitForTimeout(500); // pacing corto (Web Bot Auth ya da rate limits altos)
     }
 
     // Segunda pasada: reintenta SOLO los checks que fallaron (de verdad, no los ámbar) tras enfriar.
     const failedIdx = vpItems.map((it, i) => (!it.ok && it.level === 'check' ? i : -1)).filter((i) => i >= 0);
     if (failedIdx.length > 0 && failedIdx.length < checks.length) {
-      await page.waitForTimeout(10000);
+      await page.waitForTimeout(5000);
       for (const i of failedIdx) {
         const retry = await runCheck(checks[i], i);
         if (retry.ok) vpItems[i] = retry;
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(800);
       }
     }
 
