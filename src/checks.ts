@@ -87,9 +87,13 @@ export async function isChallenged(page: Page): Promise<boolean> {
       const t = (document.title || '').toLowerCase();
       const b = (document.body?.innerText || '').toLowerCase().slice(0, 3000);
       const hay = (s: string) => t.includes(s) || b.includes(s);
+      // Inglés
       if (hay('checking your browser') || hay('just a moment') || hay('attention required')) return true;
       if (hay('verify you are human') || hay('verifying you are human') || hay('enable javascript and cookies')) return true;
       if (hay('captcha') || hay('cf-challenge') || hay('access denied') || hay('ray id')) return true;
+      // Español (Cloudflare y similares)
+      if (hay('verificar tu conexión') || hay('verificando') || hay('un momento') || hay('comprobando')) return true;
+      if (hay('cloudflare') || hay('revisar la seguridad de tu conexión') || hay('espera mientras')) return true;
       return !!document.querySelector(
         'iframe[src*="challenge"], iframe[src*="turnstile"], iframe[src*="captcha"], #challenge-form, #cf-challenge-running',
       );

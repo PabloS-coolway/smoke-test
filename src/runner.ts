@@ -226,7 +226,9 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
   // Cada tienda se prueba en DOS vistas: Escritorio y Móvil (donde más se rompen los temas de Shopify).
   const viewports = [
     { id: 'desktop', name: 'Escritorio', mobile: false, opts: { viewport: { width: 1366, height: 900 } } },
-    { id: 'mobile', name: 'Móvil', mobile: true, opts: { ...devices['iPhone 13'] } },
+    // Móvil: device Android **Chrome** (no iPhone/Safari): el UA debe cuadrar con el motor Chromium,
+    // si no Cloudflare detecta un fingerprint incoherente (Safari-sobre-Chromium) y lo challengea.
+    { id: 'mobile', name: 'Móvil', mobile: true, opts: { ...devices['Pixel 7'] } },
   ];
 
   const items: ResultItem[] = [];
@@ -244,7 +246,8 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
 
     const jsErrors: string[] = [];
     page.on('pageerror', (e) => {
-      if (!IGNORE_JS.some((s) => e.message.includes(s))) jsErrors.push(e.message);
+      const msg = (e && (e.message || e.stack?.split('\n')[0])) || String(e);
+      if (msg && !IGNORE_JS.some((s) => msg.includes(s))) jsErrors.push(msg);
     });
 
     // Rendimiento de la home: EN FRÍO (primera navegación del contexto) y solo en escritorio.
