@@ -485,30 +485,37 @@ export const checks: Check[] = [
     once: true,
     chip: 'Enlaces rotos',
     run: async ({ page, store }) => {
+      // Configurable por env: pausa entre comprobaciones y nº de enlaces (para ajustar rate-limit vs
+      // velocidad). Lo ESCALABLE de verdad es Web Bot Auth (autorizado = sin 429), no un gap enorme.
+      const gapMs = Math.min(20000, Math.max(0, Number(process.env.LINK_CHECK_GAP_MS ?? 2500)));
+      const maxLinks = Math.min(40, Math.max(1, Number(process.env.LINK_CHECK_MAX ?? 12)));
       await nav(page, store.baseUrl);
       await dismissPopups(page);
-      const r = await page.evaluate(async () => {
-        const origin = location.origin;
-        const skip = /\/cdn\/|\.(png|jpe?g|webp|svg|gif|css|js|pdf|ico)(\?|$)|^mailto:|^tel:|#/i;
-        const hrefs = Array.from(document.querySelectorAll('a[href]'))
-          .map((a) => (a as HTMLAnchorElement).href)
-          .filter((h) => h.startsWith(origin) && !skip.test(h));
-        const unique = Array.from(new Set(hrefs)).slice(0, 15);
-        const broken: string[] = []; // roto de verdad: 404/410/5xx
-        const limited: string[] = []; // 429/403: la tienda nos limitó, NO es un enlace roto
-        for (const u of unique) {
-          try {
-            const resp = await fetch(u, { method: 'HEAD', redirect: 'follow' });
-            const p = u.replace(origin, '');
-            if (resp.status === 404 || resp.status === 410 || resp.status >= 500) broken.push(p + ' (' + resp.status + ')');
-            else if (resp.status === 429 || resp.status === 403) limited.push(p + ' (' + resp.status + ')');
-          } catch {
-            /* fallo de red puntual: no lo contamos */
+      const r = await page.evaluate(
+        async ({ gapMs, maxLinks }) => {
+          const origin = location.origin;
+          const skip = /\/cdn\/|\.(png|jpe?g|webp|svg|gif|css|js|pdf|ico)(\?|$)|^mailto:|^tel:|#/i;
+          const hrefs = Array.from(document.querySelectorAll('a[href]'))
+            .map((a) => (a as HTMLAnchorElement).href)
+            .filter((h) => h.startsWith(origin) && !skip.test(h));
+          const unique = Array.from(new Set(hrefs)).slice(0, maxLinks);
+          const broken: string[] = []; // roto de verdad: 404/410/5xx
+          const limited: string[] = []; // 429/403: la tienda nos limitó, NO es un enlace roto
+          for (const u of unique) {
+            try {
+              const resp = await fetch(u, { method: 'HEAD', redirect: 'follow' });
+              const p = u.replace(origin, '');
+              if (resp.status === 404 || resp.status === 410 || resp.status >= 500) broken.push(p + ' (' + resp.status + ')');
+              else if (resp.status === 429 || resp.status === 403) limited.push(p + ' (' + resp.status + ')');
+            } catch {
+              /* fallo de red puntual: no lo contamos */
+            }
+            await new Promise((res) => setTimeout(res, gapMs));
           }
-          await new Promise((res) => setTimeout(res, 250)); // pausa para no disparar rate-limit (429)
-        }
-        return { checked: unique.length, broken, limited };
-      });
+          return { checked: unique.length, broken, limited };
+        },
+        { gapMs, maxLinks },
+      );
       const ok = r.broken.length === 0;
       let detail = `${r.checked} revisados · ${r.broken.length} roto(s)`;
       if (r.broken.length) detail += ': ' + r.broken.slice(0, 3).join(', ');
