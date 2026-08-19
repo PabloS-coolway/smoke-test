@@ -63,6 +63,39 @@
       .notif .nt { flex: 1; min-width: 0; } .notif .nt b { font-size: 14px; } .notif .nd { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
       .notif a.nlink { font-size: 12px; color: var(--accent); text-decoration: none; border: 1px solid var(--line-2); padding: 3px 9px; border-radius: 8px; align-self: center; }
 
+      /* Cabecera: campana de notificaciones + desplegable */
+      .topbar { display: flex; justify-content: flex-end; align-items: center; margin-bottom: var(--sp-3); }
+      .bell-wrap { position: relative; }
+      .bell { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line-2); color: var(--muted); cursor: pointer; padding: 0; }
+      .bell:hover { background: var(--panel-2); color: var(--ink); }
+      .bell-badge:not(:empty) { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--fail); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--paper); }
+      .notif-drop { position: absolute; right: 0; top: calc(100% + 8px); width: 370px; max-width: 88vw; max-height: 72vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line-2); border-radius: 14px; box-shadow: 0 16px 44px oklch(24% 0.012 265 / 0.14); padding: var(--sp-3); z-index: 40; }
+      .nd-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 10px; }
+      .nd-head b { font-family: var(--font-display); font-size: 14px; }
+      .nd-seen { font: inherit; font-size: 12px; font-weight: 600; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 2px 4px; }
+      .nd-seen:hover { text-decoration: underline; }
+      @media (max-width: 860px) { .notif-drop { position: fixed; right: var(--sp-4); left: var(--sp-4); width: auto; } }
+
+      /* Historial: timeline en tarjetas */
+      .hday-group { margin-bottom: var(--sp-4); }
+      .hday-hdr { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; font: inherit; font-family: var(--font-display); font-size: 12px; font-weight: 600; text-transform: capitalize; color: var(--muted); background: none; border: 0; padding: 4px 2px var(--sp-2); cursor: pointer; }
+      .hday-hdr:hover { color: var(--ink); }
+      .hcards { display: flex; flex-direction: column; gap: var(--sp-2); }
+      .hcard { display: flex; align-items: center; gap: var(--sp-3); background: var(--panel); border: 1px solid var(--line); border-left-width: 3px; border-radius: 11px; padding: 10px var(--sp-4); cursor: pointer; }
+      .hcard:hover { background: var(--panel-2); }
+      .hcard.ok { border-left-color: var(--ok); }
+      .hcard.fail { border-left-color: var(--fail); }
+      .hcard.active { box-shadow: inset 0 0 0 1px var(--line-2); background: var(--panel-2); }
+      .hc-status { flex: none; width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; }
+      .hc-status.ok { background: var(--ok); } .hc-status.fail { background: var(--fail); }
+      .hc-main { flex: 1; min-width: 0; }
+      .hc-line1 { display: flex; align-items: center; gap: var(--sp-2); font-size: 14px; }
+      .hc-line1 b { font-family: var(--font-display); font-weight: 600; }
+      .hc-type { font-size: 11px; font-weight: 600; color: var(--faint); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+      .hc-type.partial { color: var(--warn); border-color: oklch(85% 0.06 70); background: oklch(97% 0.03 70); }
+      .hc-line2 { font-size: 12px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+      .hc-score { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
+
       /* Programación */
       .sched { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-5); }
       .sw { display: flex; align-items: center; gap: var(--sp-2); font-weight: 600; font-size: 14px; cursor: pointer; }
@@ -254,20 +287,33 @@
       <aside class="sidebar">
         <div class="brand"><span class="mark" aria-hidden="true"></span><b>Test de tiendas</b></div>
         <nav class="nav">
-          <button class="nav-item active" data-view="lanzar"><span class="n-ico"></span>Lanzar validación</button>
-          <button class="nav-item" data-view="resultados"><span class="n-ico"></span>Resultados</button>
+          <button class="nav-item active" data-view="validar"><span class="n-ico"></span>Validar</button>
           <button class="nav-item" data-view="comparativa"><span class="n-ico"></span>Comparativa</button>
           <button class="nav-item" data-view="historial"><span class="n-ico"></span>Historial<span class="n-count" id="histCount"></span></button>
-          <button class="nav-item" data-view="ajustes"><span class="n-ico"></span>Notificaciones<span class="n-count n-alert" id="notifCount"></span></button>
+          <button class="nav-item" data-view="ajustes"><span class="n-ico"></span>Ajustes</button>
         </nav>
         <button id="logout" class="logout" style="display:none">Cerrar sesión</button>
       </aside>
 
       <main class="main">
         <div class="content">
+          <!-- Barra superior: campana de notificaciones -->
+          <div class="topbar">
+            <div class="bell-wrap">
+              <button class="bell" id="bellBtn" aria-label="Notificaciones" title="Notificaciones">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                <span class="bell-badge" id="notifCount"></span>
+              </button>
+              <div class="notif-drop" id="notifDrop" style="display:none">
+                <div class="nd-head"><b>Notificaciones</b><button class="nd-seen" id="notifSeen">Marcar todo leído</button></div>
+                <div id="notifList"></div>
+              </div>
+            </div>
+          </div>
           <div class="warn-banner" id="warnBanner" style="display:none"></div>
-          <!-- Vista: Lanzar -->
-          <section class="view active" data-view="lanzar">
+
+          <!-- Vista: Validar (lanzar + resultados en la misma pantalla) -->
+          <section class="view active" data-view="validar">
             <h1>Validar las tiendas</h1>
             <p class="lead">Comprueba que las funcionalidades clave de las tiendas siguen funcionando, en escritorio y móvil. Lánzalo después de cada cambio o deploy.</p>
 
@@ -279,19 +325,9 @@
             <p class="section-h">Lanzar en</p>
             <div class="launch" id="launch"></div>
 
-            <p class="section-h">Los bloques</p>
-            <div class="about">
-              <div class="about-card"><h3>HOME</h3><p>La home carga y el menú funciona (hover en escritorio, hamburguesa en móvil).</p></div>
-              <div class="about-card"><h3>COLECCIONES</h3><p>Una colección real carga y muestra sus productos.</p></div>
-              <div class="about-card"><h3>PDP</h3><p>Se abre una ficha de producto y se puede añadir al carrito.</p></div>
-              <div class="about-card"><h3>OTROS</h3><p>Se llega al pago (sin comprar), el buscador devuelve resultados, y la moneda/idioma son los correctos del país.</p></div>
-            </div>
-          </section>
-
-          <!-- Vista: Resultados -->
-          <section class="view" data-view="resultados">
-            <div class="res-head">
-              <h1>Resultados</h1>
+            <!-- Resultados, en la misma pantalla (aparecen al lanzar) -->
+            <div class="res-head" id="resHead" style="display:none">
+              <p class="section-h" style="margin:0">Resultados</p>
               <div class="vpseg" id="vpseg">
                 <button class="vps active" data-vp="d">Escritorio</button>
                 <button class="vps" data-vp="m">Móvil</button>
@@ -299,7 +335,16 @@
               </div>
             </div>
             <div id="results" data-vp="d"></div>
-            <div class="res-empty" id="resEmpty">Aún no hay resultados. Lanza una validación desde «Lanzar validación».</div>
+
+            <div id="aboutBlock">
+              <p class="section-h">Los bloques</p>
+              <div class="about">
+                <div class="about-card"><h3>HOME</h3><p>La home carga y el menú funciona (hover en escritorio, hamburguesa en móvil).</p></div>
+                <div class="about-card"><h3>COLECCIONES</h3><p>Una colección real carga y muestra sus productos.</p></div>
+                <div class="about-card"><h3>PDP</h3><p>Se abre una ficha de producto y se puede añadir al carrito.</p></div>
+                <div class="about-card"><h3>OTROS</h3><p>Se llega al pago (sin comprar), el buscador devuelve resultados, y la moneda/idioma son los correctos del país.</p></div>
+              </div>
+            </div>
           </section>
 
           <!-- Vista: Comparativa -->
@@ -309,12 +354,10 @@
             <div id="compareTable"></div>
           </section>
 
-          <!-- Vista: Notificaciones y ajustes -->
+          <!-- Vista: Ajustes -->
           <section class="view" data-view="ajustes">
-            <h1>Notificaciones y ajustes</h1>
-
-            <p class="section-h">Notificaciones</p>
-            <div id="notifList"></div>
+            <h1>Ajustes</h1>
+            <p class="lead">Programación de validaciones automáticas y referencia de regresión visual. Los avisos viven ahora en la 🔔 de arriba.</p>
 
             <p class="section-h">Corridas programadas</p>
             <div class="sched">
@@ -507,34 +550,62 @@
         document.querySelectorAll('.view').forEach((s) => s.classList.toggle('active', s.dataset.view === v));
         if (v === 'historial') loadHistory();
         if (v === 'comparativa') loadCompare();
-        if (v === 'ajustes') { loadNotifications(true); loadConfig(); }
+        if (v === 'ajustes') loadConfig();
       }
 
+      // Pinta una notificación (firma o fallo) para el desplegable de la campana.
+      function renderNotif(n) {
+        if (n.kind === 'signature') {
+          const when = new Date(n.expiresAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
+          const caduc = n.daysLeft < 0;
+          const cls = caduc ? 'fail' : n.attention ? 'warn' : 'ok';
+          const sym = caduc ? '!' : n.attention ? '!' : '✓';
+          const txt = caduc
+            ? 'ha <b>caducado</b> (' + when + '). Renuévala o esa tienda fallará.'
+            : 'caduca en <b>' + n.daysLeft + ' día(s)</b> (' + when + ').';
+          return '<div class="notif ' + cls + '"><div class="ni">' + sym + '</div><div class="nt"><b>Firma de ' + esc(n.store) + '</b><div class="nd">La firma Web Bot Auth ' + txt + '</div></div></div>';
+        }
+        const when = new Date(n.startedAt).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        const nuevo = n.isNew ? ' <span class="ntag">nuevo</span>' : '';
+        return '<div class="notif fail"><div class="ni">✗</div><div class="nt"><b>' + esc(n.store) + ' falló' + nuevo + '</b><div class="nd">Validación ' + n.passed + '/' + n.total + ' · ' + when + '</div></div><a class="nlink" href="#" onclick="showRun(\'' + n.runId + '\'); return false">ver</a></div>';
+      }
+
+      // Carga las notificaciones: refresca el badge y (si el desplegable existe) su lista.
+      // markSeen=true limpia el badge en el servidor (al abrir la campana).
       async function loadNotifications(markSeen) {
         const d = await fetch('/api/notifications').then((r) => (r.ok ? r.json() : { count: 0, items: [] })).catch(() => ({ count: 0, items: [] }));
         $('#notifCount').textContent = d.count ? String(d.count) : '';
         const box = $('#notifList');
-        if (!box || !markSeen) return;
-        if (!d.items || !d.items.length) { box.innerHTML = '<div class="empty">Sin notificaciones. Todo en orden. 🎉</div>'; return; }
-        box.innerHTML = d.items.map((n) => {
-          if (n.kind === 'signature') {
-            const when = new Date(n.expiresAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
-            const caduc = n.daysLeft < 0;
-            const cls = caduc ? 'fail' : n.attention ? 'warn' : 'ok';
-            const sym = caduc ? '!' : n.attention ? '!' : '✓';
-            const txt = caduc
-              ? 'ha <b>caducado</b> (' + when + '). Renuévala o esa tienda fallará.'
-              : 'caduca en <b>' + n.daysLeft + ' día(s)</b> (' + when + ').';
-            return '<div class="notif ' + cls + '"><div class="ni">' + sym + '</div><div class="nt"><b>Firma de ' + esc(n.store) + '</b><div class="nd">La firma Web Bot Auth ' + txt + '</div></div></div>';
-          }
-          const when = new Date(n.startedAt).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-          const nuevo = n.isNew ? ' <span class="ntag">nuevo</span>' : '';
-          return '<div class="notif fail"><div class="ni">✗</div><div class="nt"><b>' + esc(n.store) + ' falló' + nuevo + '</b><div class="nd">Validación ' + n.passed + '/' + n.total + ' · ' + when + '</div></div><a class="nlink" href="#" onclick="showRun(\'' + n.runId + '\'); return false">ver</a></div>';
-        }).join('');
-        // Al ver el panel, marca las alertas como vistas (limpia el badge).
+        if (box) {
+          box.innerHTML = (d.items && d.items.length)
+            ? d.items.map(renderNotif).join('')
+            : '<div class="empty">Sin notificaciones. Todo en orden. 🎉</div>';
+        }
+        if (markSeen && d.count) {
+          fetch('/api/notifications/seen', { method: 'POST' }).catch(() => {});
+          $('#notifCount').textContent = '';
+        }
+      }
+
+      // Campana: abrir/cerrar el desplegable de notificaciones.
+      function closeBell() { const d = $('#notifDrop'); if (d) d.style.display = 'none'; }
+      function toggleBell(e) {
+        if (e) e.stopPropagation();
+        const d = $('#notifDrop');
+        if (d.style.display === 'none') { d.style.display = 'block'; loadNotifications(true); }
+        else d.style.display = 'none';
+      }
+      $('#bellBtn').addEventListener('click', toggleBell);
+      $('#notifSeen').addEventListener('click', (e) => {
+        e.stopPropagation();
         fetch('/api/notifications/seen', { method: 'POST' }).catch(() => {});
         $('#notifCount').textContent = '';
-      }
+        document.querySelectorAll('#notifList .ntag').forEach((t) => t.remove());
+      });
+      document.addEventListener('click', (e) => {
+        const w = document.querySelector('.bell-wrap');
+        if (w && !w.contains(e.target)) closeBell();
+      });
 
       async function loadConfig() {
         const c = await fetch('/api/config').then((r) => (r.ok ? r.json() : null)).catch(() => null);
@@ -629,7 +700,13 @@
           '<p class="cmp-legend">Cada celda muestra el resultado por vista (<b>Escr</b>itorio · <b>Móv</b>il · <b>Gen</b>eral). Pasa el ratón para ver el detalle. Las filas donde las tiendas difieren van resaltadas.</p>';
       }
 
-      function showResults() { $('#resEmpty').style.display = 'none'; setView('resultados'); }
+      // Muestra la zona de resultados dentro de la misma pantalla «Validar» y baja hasta ella.
+      function showResults() {
+        setView('validar');
+        $('#resHead').style.display = 'flex';
+        $('#aboutBlock').style.display = 'none';
+        $('#resHead').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
 
       function curVp() { const a = $('#vpseg .vps.active'); return (a && a.dataset.vp) || 'd'; }
 
@@ -827,35 +904,43 @@
         const counts = {};
         for (const h of slice) counts[dayKeyOf(h.startedAt)] = (counts[dayKeyOf(h.startedAt)] || 0) + 1;
 
-        let rows = '';
+        let html = '';
         let lastDay = '';
+        let open = false; // ¿estamos dentro de un grupo de día abierto?
         for (const h of slice) {
           const dk = dayKeyOf(h.startedAt);
           if (dk !== lastDay) {
+            if (open) { html += '</div></div>'; open = false; } // cierra el grupo anterior
             const col = collapsedDays.has(dk);
-            rows +=
-              '<tr class="hday" onclick="toggleDay(\'' + dk + '\')"><td colspan="7">' +
+            html +=
+              '<div class="hday-group"><button class="hday-hdr" onclick="toggleDay(\'' + dk + '\')">' +
               '<span class="chev">' + (col ? '▸' : '▾') + '</span>' + dayFmt(h.startedAt) +
-              '<span class="hday-n">' + counts[dk] + '</span></td></tr>';
+              '<span class="hday-n">' + counts[dk] + '</span></button>';
+            if (!col) { html += '<div class="hcards">'; open = true; }
             lastDay = dk;
           }
-          if (collapsedDays.has(dk)) continue; // día plegado: no se pintan sus filas
-          rows +=
-            '<tr data-run="' + h.runId + '" onclick="showRun(\'' + h.runId + '\', this)">' +
-            '<td><span class="pill ' + (h.ok ? 'ok' : 'fail') + '"><span class="dot ' + (h.ok ? 'ok' : 'fail') + '"></span>' + (h.ok ? 'OK' : 'Fallo') + '</span></td>' +
-            '<td>' + h.storeName + '</td>' +
-            '<td><span class="score">' + h.passed + '/' + h.total + '</span></td>' +
-            '<td class="num">' + new Date(h.startedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) + '</td>' +
-            '<td class="num">' + (h.perf ? (h.perf.loadMs / 1000).toFixed(1) + ' s' : '—') + '</td>' +
-            '<td class="num">' + (h.durationMs / 1000).toFixed(0) + ' s</td>' +
-            '<td class="hact"><button class="del" title="Borrar" onclick="event.stopPropagation(); delRun(\'' + h.runId + '\')">✕</button></td></tr>';
+          if (collapsedDays.has(dk)) continue; // día plegado: no se pintan sus tarjetas
+          const partial = h.blocks && h.blocks.length;
+          const tipo = partial
+            ? '<span class="hc-type partial" title="Corrida parcial">' + esc(h.blocks.join(', ')) + '</span>'
+            : '<span class="hc-type">completa</span>';
+          const hora = new Date(h.startedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+          const carga = h.perf ? ' · ' + (h.perf.loadMs / 1000).toFixed(1) + ' s carga' : '';
+          html +=
+            '<div class="hcard ' + (h.ok ? 'ok' : 'fail') + '" onclick="showRun(\'' + h.runId + '\', this)">' +
+            '<span class="hc-status ' + (h.ok ? 'ok' : 'fail') + '">' + (h.ok ? '✓' : '✗') + '</span>' +
+            '<div class="hc-main"><div class="hc-line1"><b>' + esc(h.storeName) + '</b>' + tipo +
+            ' <span class="hc-score">' + h.passed + '/' + h.total + '</span></div>' +
+            '<div class="hc-line2">' + hora + carga + ' · ' + (h.durationMs / 1000).toFixed(0) + ' s</div></div>' +
+            '<button class="del" title="Borrar" onclick="event.stopPropagation(); delRun(\'' + h.runId + '\')">✕</button></div>';
         }
+        if (open) html += '</div></div>';
         const pager = pages > 1
           ? '<div class="pager"><button class="pg" ' + (histPage === 0 ? 'disabled' : '') + ' onclick="histGo(-1)">← Anteriores</button>' +
             '<span class="pg-info">Página ' + (histPage + 1) + ' de ' + pages + '</span>' +
             '<button class="pg" ' + (histPage >= pages - 1 ? 'disabled' : '') + ' onclick="histGo(1)">Siguientes →</button></div>'
           : '';
-        box.innerHTML = trendPanel() + '<table class="htable"><thead><tr><th>Estado</th><th>Tienda</th><th>Resultado</th><th>Hora</th><th>Carga</th><th>Duración</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' + pager;
+        box.innerHTML = trendPanel() + html + pager;
       }
 
       function histGo(d) { histPage += d; renderHistory(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -879,9 +964,10 @@
       async function showRun(runId, el) {
         const d = await fetch('/api/run/' + runId).then((r) => (r.ok ? r.json() : null)).catch(() => null);
         if (!d) return;
-        $('#results').innerHTML = card(d); // el informe se ve en la pantalla de Resultados
-        document.querySelectorAll('.htable tbody tr').forEach((x) => x.classList.toggle('active', x === el));
+        $('#results').innerHTML = card(d); // el informe se ve en la misma pantalla «Validar»
         showResults();
+        closeBell();
+        document.querySelectorAll('.hcard').forEach((x) => x.classList.toggle('active', x === el));
       }
       window.showRun = showRun;
 
