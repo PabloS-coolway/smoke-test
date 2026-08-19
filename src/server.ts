@@ -3,7 +3,8 @@ import express from 'express';
 import path from 'node:path';
 import { stores, storeById } from './stores';
 import { BLOCKS, CHIPS, SELECTORS, deleteRun, getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
-import { startScheduler } from './scheduler';
+import { reloadSchedule, scheduleSummary, startScheduler } from './scheduler';
+import { getConfig, setConfig } from './config';
 import { storage } from './storage';
 import { authEnabled, clearSession, isAuthed, requireAuth, setSession, checkPassword } from './auth';
 
@@ -71,16 +72,18 @@ app.get('/api/compare', requireAuth, async (_req, res) => {
     if (!full) continue;
     if (full.blocks && full.blocks.length) continue; // parcial: sigue buscando la última COMPLETA de esa tienda
     seen.add(h.store);
-    const cks: Record<string, { d?: boolean; m?: boolean; g?: boolean }> = {};
+    type Cell = { ok: boolean; detail: string; group: string };
+    const cks: Record<string, { d?: Cell; m?: Cell; g?: Cell }> = {};
     for (const it of full.items) {
       if (it.level !== 'check') continue;
       const vp = it.viewport === 'Móvil' ? 'm' : it.viewport === 'General' ? 'g' : 'd';
-      (cks[it.label] ||= {})[vp] = it.ok;
+      (cks[it.label] ||= {})[vp] = { ok: it.ok, detail: it.detail, group: it.group };
     }
     out.push({
       store: full.storeName,
       runId: full.runId,
       startedAt: full.startedAt,
+      durationMs: full.durationMs,
       passed: full.passed,
       total: full.total,
       ok: full.ok,
@@ -104,6 +107,52 @@ app.get('/api/warnings', requireAuth, (_req, res) => {
     if (daysLeft <= 21) warnings.push({ kind: 'signature', store: s.name, daysLeft, expiresAt: exp * 1000 });
   }
   res.json({ warnings });
+});
+
+/** Centro de notificaciones: firmas (todas, con días) + últimas corridas fallidas. `count` = las que piden atención. */
+app.get('/api/notifications', requireAuth, async (_req, res) => {
+  const nowS = Date.now() / 1000;
+  const items: Array<Record<string, unknown>> = [];
+  let count = 0;
+  // Firmas Web Bot Auth: estado de cada una.
+  for (const s of stores()) {
+    if (!s.sigInput) continue;
+    const m = s.sigInput.match(/expires=(\d+)/);
+    if (!m) continue;
+    const daysLeft = Math.floor((Number(m[1]) - nowS) / 86400);
+    const attention = daysLeft <= 21;
+    if (attention) count++;
+    items.push({ kind: 'signature', store: s.name, daysLeft, expiresAt: Number(m[1]) * 1000, attention });
+  }
+  // Última corrida de cada tienda: si falló, es un aviso.
+  const hist = await history();
+  const seen = new Set<string>();
+  for (const h of hist) {
+    if (seen.has(h.store)) continue;
+    seen.add(h.store);
+    if (!h.ok) {
+      count++;
+      items.push({ kind: 'failure', store: h.storeName, runId: h.runId, passed: h.passed, total: h.total, startedAt: h.startedAt, attention: true });
+    }
+  }
+  res.json({ count, items });
+});
+
+/** Config administrable (programación de corridas). */
+app.get('/api/config', requireAuth, async (_req, res) => {
+  const cfg = await getConfig();
+  res.json({ ...cfg, summary: scheduleSummary(cfg), alertsOn: !!process.env.SLACK_WEBHOOK_URL });
+});
+
+app.post('/api/config', requireAuth, async (req, res) => {
+  const b = (req.body ?? {}) as Partial<{ scheduleEnabled: boolean; scheduleTimes: string[]; scheduleDays: string }>;
+  const patch: Record<string, unknown> = {};
+  if (typeof b.scheduleEnabled === 'boolean') patch.scheduleEnabled = b.scheduleEnabled;
+  if (Array.isArray(b.scheduleTimes)) patch.scheduleTimes = b.scheduleTimes;
+  if (b.scheduleDays === 'daily' || b.scheduleDays === 'weekdays') patch.scheduleDays = b.scheduleDays;
+  const cfg = await setConfig(patch);
+  await reloadSchedule(); // reprograma en caliente
+  res.json({ ...cfg, summary: scheduleSummary(cfg), alertsOn: !!process.env.SLACK_WEBHOOK_URL });
 });
 
 /** Estado global: ¿hay una validación en curso? (para que la UI bloquee lanzar otra). */

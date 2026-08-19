@@ -1,26 +1,43 @@
-import cron from 'node-cron';
+import cron, { type ScheduledTask } from 'node-cron';
 import { stores } from './stores';
 import { isBusy, startRun, waitForJob } from './runner';
+import { getConfig, type AppConfig } from './config';
 
 /**
- * Corridas programadas: si `SCHEDULE_CRON` está definido (expresión cron), lanza una validación de
- * TODAS las tiendas en ese horario, encadenadas (una a una, respetando el candado de concurrencia).
- * Al fallar, cada corrida avisa por Slack si hay webhook (ver notify.ts). Zona horaria: `SCHEDULE_TZ`.
- * Ejemplos: "0 8 * * *" = cada día a las 08:00; "0 8,20 * * 1-5" = 08:00 y 20:00 de lunes a viernes.
+ * Corridas programadas ADMINISTRABLES desde la UI (la config vive en el storage, no en env).
+ * Lanza una validación de TODAS las tiendas a las horas configuradas, encadenadas (respetando el
+ * candado de concurrencia). Al fallar, cada corrida avisa por Slack si hay webhook (ver notify.ts).
  */
+let tasks: ScheduledTask[] = [];
+
+/** Traduce la config a expresiones cron y (re)programa las tareas. Se puede llamar en caliente. */
+export async function reloadSchedule(): Promise<void> {
+  for (const t of tasks) t.stop();
+  tasks = [];
+  const cfg = await getConfig();
+  if (!cfg.scheduleEnabled) {
+    console.log('Programación: desactivada');
+    return;
+  }
+  const dayField = cfg.scheduleDays === 'weekdays' ? '1-5' : '*';
+  for (const time of cfg.scheduleTimes) {
+    const [h, m] = time.split(':');
+    const expr = `${Number(m)} ${Number(h)} * * ${dayField}`;
+    if (!cron.validate(expr)) continue;
+    tasks.push(cron.schedule(expr, () => void runAllStores(), { timezone: cfg.tz }));
+  }
+  console.log(`Programación: ${cfg.scheduleTimes.join(', ')} (${cfg.scheduleDays}, ${cfg.tz})`);
+}
+
 export function startScheduler(): void {
-  const expr = (process.env.SCHEDULE_CRON ?? '').trim();
-  const tz = (process.env.SCHEDULE_TZ ?? 'Europe/Madrid').trim();
-  if (!expr) {
-    console.log('Programación: desactivada (define SCHEDULE_CRON para activarla)');
-    return;
-  }
-  if (!cron.validate(expr)) {
-    console.log(`Programación: expresión cron inválida (${expr}) — desactivada`);
-    return;
-  }
-  cron.schedule(expr, () => void runAllStores(), { timezone: tz });
-  console.log(`Programación: "${expr}" (${tz})`);
+  void reloadSchedule();
+}
+
+/** Descripción legible del estado actual (para la UI). */
+export function scheduleSummary(cfg: AppConfig): string {
+  if (!cfg.scheduleEnabled) return 'desactivadas';
+  const dias = cfg.scheduleDays === 'weekdays' ? 'L-V' : 'todos los días';
+  return `${dias} a las ${cfg.scheduleTimes.join(' y ')} (${cfg.tz})`;
 }
 
 let running = false;
@@ -29,7 +46,6 @@ async function runAllStores(): Promise<void> {
   running = true;
   try {
     for (const store of stores()) {
-      // Si hay una corrida manual en curso, espera un poco; si sigue ocupada, salta esta tienda.
       let waited = 0;
       while (isBusy() && waited < 24) {
         await new Promise((r) => setTimeout(r, 5000));
