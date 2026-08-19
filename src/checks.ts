@@ -677,8 +677,11 @@ export const checks: Check[] = [
       if (!disco.productUrl) return { ok: false, detail: 'sin producto que probar (no descubierto)' };
       await nav(page, disco.productUrl);
       await dismissPopups(page);
-      const RADIO = 'form[action*="/cart/add"] input[type="radio"], variant-radios input[type="radio"], .product-form__input input[type="radio"]';
-      const SELECT = 'form[action*="/cart/add"] select, variant-selects select, .product-form__input select';
+      // Selectores de variante AGNÓSTICOS al tema: los inputs de opción de Shopify se llaman siempre
+      // name="option1/2/3", vengan en <variant-radios> (Dawn), <variant-picker> (Prestige/Impulse) o
+      // .product-form__input. Nos ceñimos a name^="option" para no confundir con otros radios/selects.
+      const RADIO = 'input[type="radio"][name^="option"]';
+      const SELECT = 'select[name^="option"]';
       const counts = await page.evaluate(
         ({ RADIO, SELECT }) => ({
           radios: document.querySelectorAll(RADIO).length,
@@ -706,7 +709,18 @@ export const checks: Check[] = [
           const r = radios.nth(i);
           if (await r.isDisabled().catch(() => false)) continue; // agotada / no seleccionable
           if (await r.isChecked().catch(() => false)) continue; // ya era la marcada
-          await r.click({ timeout: 2500, force: true }).catch(() => undefined);
+          // El radio suele ser sr-only (oculto); el control visible es su <label>. Clicamos el label
+          // (dispara el 'change' que el tema escucha); si no hay, forzamos el clic sobre el input.
+          const id = await r.getAttribute('id');
+          let clicked = false;
+          if (id) {
+            const label = page.locator(`label[for="${id}"]`).first();
+            if (await label.count()) {
+              await label.click({ timeout: 2500, force: true }).catch(() => undefined);
+              clicked = true;
+            }
+          }
+          if (!clicked) await r.click({ timeout: 2500, force: true }).catch(() => undefined);
           picked = (await r.getAttribute('value')) || 'opción';
           break;
         }
@@ -718,14 +732,15 @@ export const checks: Check[] = [
           picked = 'opción de lista';
         }
       }
-      await page.waitForTimeout(1200); // deja que el tema actualice la variante seleccionada
+      await page.waitForTimeout(1500); // deja que el tema actualice la variante seleccionada
       const idAfter = await variantId();
       const addBtn = await findAddToCart(page, store);
       const addable = addBtn ? !(await addBtn.isDisabled().catch(() => false)) : false;
       const changed = !!idAfter && idBefore !== idAfter;
       const ok = changed || (!!picked && addable);
+      const opts = counts.radios || counts.selects;
       const detail = picked
-        ? `seleccionada ${picked}${changed ? ` · variante ${idBefore || '—'}→${idAfter || '—'}` : ''}${addable ? ' · comprable' : ''}`
+        ? `${opts} opciones · seleccionada ${picked}${changed ? ` · variante ${idBefore || '—'}→${idAfter || '—'}` : ''}${addable ? ' · comprable' : ''}`
         : 'no se pudo seleccionar ninguna variante disponible';
       return { ok, detail };
     },
