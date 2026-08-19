@@ -63,9 +63,10 @@
       .notif .nt { flex: 1; min-width: 0; } .notif .nt b { font-size: 14px; } .notif .nd { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
       .notif a.nlink { font-size: 12px; color: var(--accent); text-decoration: none; border: 1px solid var(--line-2); padding: 3px 9px; border-radius: 8px; align-self: center; }
 
-      /* Cabecera: campana de notificaciones + desplegable */
-      .topbar { display: flex; justify-content: flex-end; align-items: center; margin-bottom: var(--sp-3); }
-      .bell-wrap { position: relative; }
+      /* Cabecera: campana de notificaciones FIJA (siempre visible) + desplegable */
+      .topbar { margin: 0; height: 0; }
+      .bell-wrap { position: fixed; top: 16px; right: 20px; z-index: 60; }
+      @media (max-width: 860px) { .bell-wrap { top: 12px; right: 14px; } }
       .bell { position: relative; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line-2); color: var(--muted); cursor: pointer; padding: 0; }
       .bell:hover { background: var(--panel-2); color: var(--ink); }
       .bell-badge:not(:empty) { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--fail); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--paper); }
@@ -75,6 +76,42 @@
       .nd-seen { font: inherit; font-size: 12px; font-weight: 600; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 2px 4px; }
       .nd-seen:hover { text-decoration: underline; }
       @media (max-width: 860px) { .notif-drop { position: fixed; right: var(--sp-4); left: var(--sp-4); width: auto; } }
+
+      /* Home: KPIs */
+      .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-5); }
+      .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-4); border-top: 3px solid var(--line-2); }
+      .kpi.ok { border-top-color: var(--ok); } .kpi.fail { border-top-color: var(--fail); } .kpi.warn { border-top-color: var(--warn); }
+      .kpi .kn { font-family: var(--font-display); font-size: 28px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+      .kpi.ok .kn { color: var(--ok); } .kpi.fail .kn { color: var(--fail); } .kpi.warn .kn { color: var(--warn); }
+      .kpi .kl { font-size: 12px; color: var(--muted); font-weight: 600; margin-top: 6px; }
+
+      /* Home: rejilla de estado por tienda */
+      .store-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--sp-3); }
+      .scard { background: var(--panel); border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius); padding: var(--sp-4); display: flex; flex-direction: column; gap: 6px; }
+      .scard.ok { border-left-color: var(--ok); } .scard.fail { border-left-color: var(--fail); } .scard.none { border-left-color: var(--line-2); }
+      .scard-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+      .scard-name { font-family: var(--font-display); font-weight: 600; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .scard-v { font-family: var(--font-display); font-weight: 700; font-size: 11.5px; padding: 3px 9px; border-radius: 999px; white-space: nowrap; flex: none; }
+      .scard-v.ok { color: var(--ok); background: var(--ok-bg); } .scard-v.fail { color: var(--fail); background: var(--fail-bg); } .scard-v.none { color: var(--faint); background: var(--panel-2); }
+      .scard-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+      .scard-meta .warn-txt { color: var(--warn); font-weight: 600; }
+      .scard-acts { display: flex; gap: 6px; margin-top: 4px; }
+      .scard-acts button { font-size: 12.5px; padding: 6px 12px; }
+      .mini { font: inherit; font-size: 12.5px; font-weight: 600; border-radius: 8px; padding: 6px 12px; cursor: pointer; border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); }
+      .mini:hover { background: var(--panel-2); }
+
+      /* Home: fallos a revisar */
+      .tf-store { margin-bottom: var(--sp-3); }
+      .tf-hdr { display: flex; align-items: center; gap: var(--sp-2); font-family: var(--font-display); font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+      .tf-hdr .tf-badge { font-size: 11px; font-weight: 700; color: #fff; background: var(--fail); border-radius: 999px; padding: 1px 8px; }
+      .tf-list { display: flex; flex-direction: column; gap: 4px; }
+      .tf-row { display: flex; align-items: flex-start; gap: var(--sp-2); background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 8px var(--sp-3); cursor: pointer; }
+      .tf-row:hover { background: var(--panel-2); }
+      .tf-x { color: var(--fail); font-weight: 700; flex: none; }
+      .tf-main { flex: 1; min-width: 0; }
+      .tf-lbl { font-size: 13px; font-weight: 600; }
+      .tf-det { font-size: 11.5px; color: var(--muted); font-family: var(--font-mono); overflow-wrap: anywhere; margin-top: 1px; }
+      .tf-none { color: var(--ok); font-size: 14px; font-weight: 600; padding: var(--sp-3) 0; }
 
       /* Historial: timeline en tarjetas */
       .hday-group { margin-bottom: var(--sp-4); }
@@ -300,7 +337,8 @@
       <aside class="sidebar">
         <div class="brand"><span class="mark" aria-hidden="true"></span><b>Test de tiendas</b></div>
         <nav class="nav">
-          <button class="nav-item active" data-view="validar"><span class="n-ico"></span>Validar</button>
+          <button class="nav-item active" data-view="home"><span class="n-ico"></span>Resumen</button>
+          <button class="nav-item" data-view="validar"><span class="n-ico"></span>Validar</button>
           <button class="nav-item" data-view="comparativa"><span class="n-ico"></span>Comparativa</button>
           <button class="nav-item" data-view="historial"><span class="n-ico"></span>Historial<span class="n-count" id="histCount"></span></button>
           <button class="nav-item" data-view="ajustes"><span class="n-ico"></span>Ajustes</button>
@@ -325,8 +363,19 @@
           </div>
           <div class="warn-banner" id="warnBanner" style="display:none"></div>
 
+          <!-- Vista: Resumen (Home) -->
+          <section class="view active" data-view="home">
+            <h1>Resumen</h1>
+            <p class="lead">Estado de las tiendas de un vistazo. Entra en cualquiera para ver su informe o lanzar una validación.</p>
+            <div class="kpis" id="kpis"></div>
+            <p class="section-h">Fallos a revisar</p>
+            <div id="topFails"></div>
+            <p class="section-h">Tiendas</p>
+            <div class="store-grid" id="storeGrid"></div>
+          </section>
+
           <!-- Vista: Validar (solo lanzar) -->
-          <section class="view active" data-view="validar">
+          <section class="view" data-view="validar">
             <h1>Validar las tiendas</h1>
             <p class="lead">Comprueba que las funcionalidades clave de las tiendas siguen funcionando, en escritorio y móvil. Lánzalo después de cada cambio o deploy.</p>
 
@@ -508,6 +557,7 @@
         $('#vpseg').querySelectorAll('.vps').forEach((btn) => {
           btn.onclick = () => applyViewport(btn.dataset.vp);
         });
+        loadHome(); // vista por defecto: Resumen
         loadHistory();
         syncBusy();
         loadWarnings();
@@ -561,10 +611,63 @@
       function setView(v) {
         document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === v));
         document.querySelectorAll('.view').forEach((s) => s.classList.toggle('active', s.dataset.view === v));
+        if (v === 'home') loadHome();
         if (v === 'historial') loadHistory();
         if (v === 'comparativa') loadCompare();
         if (v === 'ajustes') loadConfig();
       }
+
+      // ---- Home / Resumen -------------------------------------------------------
+      async function loadHome() {
+        const d = await fetch('/api/overview').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        if (!d) return;
+        const k = d.kpis;
+        const kp = (n, l, cls) => '<div class="kpi ' + (cls || '') + '"><div class="kn">' + n + '</div><div class="kl">' + l + '</div></div>';
+        const sinValidar = k.unvalidated + k.stale;
+        $('#kpis').innerHTML =
+          kp(k.ok + '/' + k.stores, 'Tiendas OK', k.stores && k.ok === k.stores ? 'ok' : (k.failing ? '' : 'ok')) +
+          kp(k.failing, 'Con fallos', k.failing ? 'fail' : '') +
+          kp(sinValidar, 'Sin validar', sinValidar ? 'warn' : '') +
+          kp(k.expiringSignatures, 'Firmas por caducar', k.expiringSignatures ? 'warn' : '') +
+          kp(k.avgLoadMs != null ? (k.avgLoadMs / 1000).toFixed(1) + ' s' : '—', 'Carga media home', '');
+        renderTopFails(d.stores);
+        $('#storeGrid').innerHTML = d.stores.map(storeCard).join('');
+      }
+
+      function renderTopFails(stores) {
+        const failed = stores.filter((s) => s.verdict === 'fail' && s.failing.length);
+        const box = $('#topFails');
+        if (!failed.length) { box.innerHTML = '<div class="tf-none">✓ Ninguna tienda con fallos ahora mismo.</div>'; return; }
+        box.innerHTML = failed.map((s) =>
+          '<div class="tf-store"><div class="tf-hdr">' + esc(s.name) + '<span class="tf-badge">' + s.failing.length + ' fallo' + (s.failing.length > 1 ? 's' : '') + '</span></div>' +
+          '<div class="tf-list">' + s.failing.map((f) =>
+            '<div class="tf-row" onclick="showRun(\'' + s.runId + '\', null, \'home\')">' +
+            '<span class="tf-x">✗</span><div class="tf-main"><div class="tf-lbl">' + esc(f.label) + (f.viewport ? ' · ' + esc(f.viewport) : '') + '</div>' +
+            '<div class="tf-det">' + esc(f.detail) + '</div></div></div>',
+          ).join('') + '</div></div>',
+        ).join('');
+      }
+
+      function storeCard(s) {
+        const fails = s.total - s.passed;
+        const v = s.verdict === 'ok' ? '<span class="scard-v ok">OK</span>'
+          : s.verdict === 'fail' ? '<span class="scard-v fail">' + fails + ' fallo' + (fails > 1 ? 's' : '') + '</span>'
+          : '<span class="scard-v none">sin validar</span>';
+        const when = s.lastCompleteAt ? new Date(s.lastCompleteAt).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'nunca';
+        const load = s.perf ? ' · ' + (s.perf.loadMs / 1000).toFixed(1) + ' s' : '';
+        const score = s.verdict !== 'none' ? s.passed + '/' + s.total + ' · ' : '';
+        const stale = (s.stale && s.verdict !== 'none') ? ' · <span class="warn-txt">>7 d sin validar</span>' : '';
+        const sig = (s.signatureDaysLeft != null && s.signatureDaysLeft <= 21)
+          ? '<div class="scard-meta"><span class="warn-txt">⏰ firma ' + (s.signatureDaysLeft < 0 ? 'caducada' : s.signatureDaysLeft + ' días') + '</span></div>' : '';
+        const verBtn = s.runId ? '<button class="mini" onclick="showRun(\'' + s.runId + '\', null, \'home\')">Ver informe</button>' : '';
+        return '<div class="scard ' + s.verdict + '"><div class="scard-top"><span class="scard-name" title="' + esc(s.name) + '">' + esc(s.name) + '</span>' + v + '</div>' +
+          '<div class="scard-meta">' + score + when + load + stale + '</div>' + sig +
+          '<div class="scard-acts"><button class="mini" onclick="runFromHome(\'' + s.id + '\')">Probar</button>' + verBtn + '</div></div>';
+      }
+
+      // Lanzar «Todo» para una tienda desde la Home.
+      function runFromHome(id) { selectedBlock = null; run([id]); }
+      window.runFromHome = runFromHome;
 
       // Pinta una notificación (firma o fallo) para el desplegable de la campana.
       function renderNotif(n) {
@@ -720,7 +823,8 @@
         document.querySelectorAll('.view').forEach((s) => s.classList.toggle('active', s.dataset.view === 'report'));
         // Mantén resaltada en el menú la sección de la que venimos (Validar o Historial).
         document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === reportBack));
-        $('#backBtn').textContent = reportBack === 'validar' ? '← Volver a lanzar' : '← Volver al historial';
+        const backLabels = { home: '← Volver al resumen', validar: '← Volver a lanzar', historial: '← Volver al historial' };
+        $('#backBtn').textContent = backLabels[reportBack] || '← Volver';
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
       function backFromReport() { setView(reportBack); }

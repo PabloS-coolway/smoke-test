@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import { stores, storeById } from './stores';
+import type { StoreConfig } from './stores';
 import { BLOCKS, CHIPS, SELECTORS, deleteRun, getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
 import { reloadSchedule, scheduleSummary, startScheduler } from './scheduler';
 import { getConfig, setConfig } from './config';
@@ -92,6 +93,81 @@ app.get('/api/compare', requireAuth, async (_req, res) => {
     });
   }
   res.json({ stores: out });
+});
+
+/**
+ * Resumen (Home): estado agregado de todas las tiendas para el panel de KPIs, la rejilla por tienda
+ * y la lista de «fallos a revisar». El estado de salud de cada tienda se toma de su última corrida
+ * COMPLETA (una parcial de un chip no representa la salud); `lastAt` refleja la última actividad.
+ */
+app.get('/api/overview', requireAuth, async (_req, res) => {
+  const hist = await history(); // más reciente primero
+  const nowS = Date.now() / 1000;
+  const STALE_DAYS = 7;
+  const sigDaysLeft = (s: StoreConfig): number | null => {
+    if (!s.sigInput) return null;
+    const m = s.sigInput.match(/expires=(\d+)/);
+    return m ? Math.floor((Number(m[1]) - nowS) / 86400) : null;
+  };
+  type Fail = { label: string; viewport: string; detail: string; group: string };
+  const storesOut: Array<Record<string, unknown>> = [];
+  const topFailures: Array<Record<string, unknown>> = [];
+  for (const s of stores()) {
+    const runs = hist.filter((h) => h.store === s.id);
+    const last = runs[0] ?? null;
+    const lastComplete = runs.find((h) => !(h.blocks && h.blocks.length)) ?? null;
+    let verdict: 'ok' | 'fail' | 'none' = 'none';
+    let passed = 0;
+    let total = 0;
+    let perf = null as null | { ttfbMs: number; loadMs: number };
+    let runId: string | null = null;
+    const failing: Fail[] = [];
+    if (lastComplete) {
+      verdict = lastComplete.ok ? 'ok' : 'fail';
+      passed = lastComplete.passed;
+      total = lastComplete.total;
+      perf = lastComplete.perf ?? null;
+      runId = lastComplete.runId;
+      if (!lastComplete.ok) {
+        const full = await getRun(lastComplete.runId);
+        for (const it of full?.items ?? []) {
+          if (it.level === 'check' && !it.ok) {
+            const f: Fail = { label: it.label, viewport: it.viewport ?? '', detail: it.detail, group: it.group };
+            failing.push(f);
+            topFailures.push({ store: s.name, storeId: s.id, runId: lastComplete.runId, ...f });
+          }
+        }
+      }
+    }
+    const daysLeft = sigDaysLeft(s);
+    const ageDays = lastComplete ? (Date.now() - new Date(lastComplete.startedAt).getTime()) / 86400000 : Infinity;
+    storesOut.push({
+      id: s.id,
+      name: s.name,
+      baseUrl: s.baseUrl,
+      verdict,
+      passed,
+      total,
+      perf,
+      runId,
+      lastAt: last ? last.startedAt : null,
+      lastCompleteAt: lastComplete ? lastComplete.startedAt : null,
+      failing,
+      stale: ageDays > STALE_DAYS,
+      signatureDaysLeft: daysLeft,
+    });
+  }
+  const withPerf = storesOut.filter((s) => s.perf) as Array<{ perf: { loadMs: number } }>;
+  const kpis = {
+    stores: storesOut.length,
+    ok: storesOut.filter((s) => s.verdict === 'ok').length,
+    failing: storesOut.filter((s) => s.verdict === 'fail').length,
+    unvalidated: storesOut.filter((s) => s.verdict === 'none').length,
+    stale: storesOut.filter((s) => s.stale && s.verdict !== 'none').length,
+    expiringSignatures: storesOut.filter((s) => s.signatureDaysLeft !== null && (s.signatureDaysLeft as number) <= 21).length,
+    avgLoadMs: withPerf.length ? Math.round(withPerf.reduce((a, s) => a + s.perf.loadMs, 0) / withPerf.length) : null,
+  };
+  res.json({ kpis, stores: storesOut, topFailures });
 });
 
 /** Avisos: firmas Web Bot Auth próximas a caducar (el `expires` va en el propio Signature-Input). */
