@@ -179,6 +179,10 @@
       .logout { position: absolute; bottom: var(--sp-4); left: var(--sp-3); right: var(--sp-3); width: calc(100% - var(--sp-3) * 2); font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: none; border: 1px solid var(--line-2); border-radius: 9px; padding: 8px; cursor: pointer; }
       .logout:hover { background: var(--panel); color: var(--ink); }
 
+      /* Aviso global (firma por caducar, etc.) */
+      .warn-banner { background: oklch(96% 0.05 70); border: 1px solid oklch(85% 0.09 70); color: oklch(45% 0.11 70); border-radius: 10px; padding: 11px var(--sp-4); margin-bottom: var(--sp-4); font-size: 13.5px; font-weight: 600; }
+      .warn-banner b { font-weight: 700; }
+
       /* Aviso de validación en curso (bloqueo de concurrencia visible) */
       .busy-banner { display: flex; align-items: center; gap: var(--sp-2); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 10px var(--sp-4); margin-bottom: var(--sp-3); font-size: 13.5px; color: var(--muted); font-weight: 600; }
       .busy-banner::before { content: ''; width: 13px; height: 13px; border: 2px solid var(--faint); border-top-color: transparent; border-radius: 50%; animation: spin 0.75s linear infinite; flex: none; }
@@ -211,6 +215,7 @@
 
       <main class="main">
         <div class="content">
+          <div class="warn-banner" id="warnBanner" style="display:none"></div>
           <!-- Vista: Lanzar -->
           <section class="view active" data-view="lanzar">
             <h1>Validar las tiendas</h1>
@@ -347,7 +352,23 @@
         });
         loadHistory();
         syncBusy();
+        loadWarnings();
         if (!busyTimer) busyTimer = setInterval(syncBusy, 4000);
+      }
+
+      // Avisos globales (firma Web Bot Auth próxima a caducar).
+      async function loadWarnings() {
+        let w = { warnings: [] };
+        try { w = await fetch('/api/warnings').then((r) => (r.ok ? r.json() : { warnings: [] })); } catch { return; }
+        const banner = $('#warnBanner');
+        if (!w.warnings || !w.warnings.length) { banner.style.display = 'none'; return; }
+        const lines = w.warnings.map((x) => {
+          const when = new Date(x.expiresAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
+          if (x.daysLeft < 0) return 'La firma de <b>' + esc(x.store) + '</b> ha <b>caducado</b> (' + when + ') — renuévala o esa tienda fallará.';
+          return 'La firma Web Bot Auth de <b>' + esc(x.store) + '</b> caduca en <b>' + x.daysLeft + ' día(s)</b> (' + when + '). Conviene renovarla.';
+        });
+        banner.innerHTML = '⚠️ ' + lines.join('<br>⚠️ ');
+        banner.style.display = 'block';
       }
 
       // Refleja el candado del servidor en la UI: si hay una validación en curso (esta pestaña u otra),

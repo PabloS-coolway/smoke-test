@@ -59,6 +59,21 @@ app.get('/api/history', requireAuth, async (_req, res) => {
   res.json(await history());
 });
 
+/** Avisos: firmas Web Bot Auth próximas a caducar (el `expires` va en el propio Signature-Input). */
+app.get('/api/warnings', requireAuth, (_req, res) => {
+  const nowS = Date.now() / 1000;
+  const warnings: Array<{ kind: string; store: string; daysLeft: number; expiresAt: number }> = [];
+  for (const s of stores()) {
+    if (!s.sigInput) continue;
+    const m = s.sigInput.match(/expires=(\d+)/);
+    if (!m) continue;
+    const exp = Number(m[1]);
+    const daysLeft = Math.floor((exp - nowS) / 86400);
+    if (daysLeft <= 21) warnings.push({ kind: 'signature', store: s.name, daysLeft, expiresAt: exp * 1000 });
+  }
+  res.json({ warnings });
+});
+
 /** Estado global: ¿hay una validación en curso? (para que la UI bloquee lanzar otra). */
 app.get('/api/busy', requireAuth, (_req, res) => {
   const j = runningJob();

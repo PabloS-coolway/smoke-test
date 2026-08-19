@@ -339,6 +339,37 @@ export const checks: Check[] = [
   },
   {
     group: 'HOME',
+    label: 'Sin imágenes rotas',
+    desc: 'Comprueba que las imágenes de la home cargan (ninguna aparece rota). Se revisa en cada vista.',
+    chip: 'Imágenes',
+    run: async ({ page, store }) => {
+      await nav(page, store.baseUrl);
+      await dismissPopups(page);
+      // Dispara la carga perezosa: baja hasta el final y vuelve arriba.
+      await page.evaluate(async () => {
+        window.scrollTo(0, document.body.scrollHeight);
+        await new Promise((r) => setTimeout(r, 1200));
+        window.scrollTo(0, 0);
+        await new Promise((r) => setTimeout(r, 300));
+      });
+      const r = await page.evaluate(() => {
+        const imgs = Array.from(document.images).filter((im) => im.currentSrc || im.src);
+        // Rota = terminó de cargar (complete) pero sin dimensiones (naturalWidth 0).
+        const broken = imgs.filter((im) => im.complete && im.naturalWidth === 0);
+        const clean = (u: string) => (u || '').split('?')[0].replace(location.origin, '');
+        const list = Array.from(new Set(broken.map((im) => clean(im.currentSrc || im.src))));
+        return { checked: imgs.length, broken: list.slice(0, 50) };
+      });
+      const ok = r.broken.length === 0;
+      return {
+        ok,
+        detail: `${r.checked} imágenes · ${r.broken.length} rota(s)${r.broken.length ? ': ' + r.broken.slice(0, 2).join(', ') : ''}`,
+        extra: r.broken.length ? r.broken.map((x) => '✗ ' + x) : undefined,
+      };
+    },
+  },
+  {
+    group: 'HOME',
     label: 'El menú funciona',
     desc: 'Comprueba que el menú de la cabecera tiene categorías; e intenta desplegarlo (hover en escritorio, hamburguesa en móvil).',
     run: async ({ page, store, mobile }) => {
