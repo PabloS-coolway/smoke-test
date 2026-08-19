@@ -96,6 +96,19 @@
       .hc-line2 { font-size: 12px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
       .hc-score { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
 
+      /* Historial: barra de filtros + cargar más */
+      .hfilters { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+      .hfilters label { font-size: 12.5px; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+      .hfilters select { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--line-2); border-radius: 9px; padding: 6px 10px; }
+      .hchk { cursor: pointer; user-select: none; }
+      .hmore { display: block; width: 100%; text-align: center; font: inherit; font-size: 13px; font-weight: 600; color: var(--ink); background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 10px; cursor: pointer; margin-top: var(--sp-3); }
+      .hmore:hover { background: var(--panel-2); }
+
+      /* Pantalla de informe (una validación concreta) */
+      .report-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+      .back { font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: var(--panel); border: 1px solid var(--line-2); border-radius: 9px; padding: 8px 14px; cursor: pointer; }
+      .back:hover { background: var(--panel-2); color: var(--ink); }
+
       /* Programación */
       .sched { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-5); }
       .sw { display: flex; align-items: center; gap: var(--sp-2); font-weight: 600; font-size: 14px; cursor: pointer; }
@@ -312,7 +325,7 @@
           </div>
           <div class="warn-banner" id="warnBanner" style="display:none"></div>
 
-          <!-- Vista: Validar (lanzar + resultados en la misma pantalla) -->
+          <!-- Vista: Validar (solo lanzar) -->
           <section class="view active" data-view="validar">
             <h1>Validar las tiendas</h1>
             <p class="lead">Comprueba que las funcionalidades clave de las tiendas siguen funcionando, en escritorio y móvil. Lánzalo después de cada cambio o deploy.</p>
@@ -325,9 +338,19 @@
             <p class="section-h">Lanzar en</p>
             <div class="launch" id="launch"></div>
 
-            <!-- Resultados, en la misma pantalla (aparecen al lanzar) -->
-            <div class="res-head" id="resHead" style="display:none">
-              <p class="section-h" style="margin:0">Resultados</p>
+            <p class="section-h">Los bloques</p>
+            <div class="about">
+              <div class="about-card"><h3>HOME</h3><p>La home carga y el menú funciona (hover en escritorio, hamburguesa en móvil).</p></div>
+              <div class="about-card"><h3>COLECCIONES</h3><p>Una colección real carga y muestra sus productos.</p></div>
+              <div class="about-card"><h3>PDP</h3><p>Se abre una ficha de producto y se puede añadir al carrito.</p></div>
+              <div class="about-card"><h3>OTROS</h3><p>Se llega al pago (sin comprar), el buscador devuelve resultados, y la moneda/idioma son los correctos del país.</p></div>
+            </div>
+          </section>
+
+          <!-- Vista: Informe (una validación concreta, con su propio Volver) -->
+          <section class="view" data-view="report">
+            <div class="report-head">
+              <button class="back" id="backBtn" onclick="backFromReport()">← Volver</button>
               <div class="vpseg" id="vpseg">
                 <button class="vps active" data-vp="d">Escritorio</button>
                 <button class="vps" data-vp="m">Móvil</button>
@@ -335,16 +358,6 @@
               </div>
             </div>
             <div id="results" data-vp="d"></div>
-
-            <div id="aboutBlock">
-              <p class="section-h">Los bloques</p>
-              <div class="about">
-                <div class="about-card"><h3>HOME</h3><p>La home carga y el menú funciona (hover en escritorio, hamburguesa en móvil).</p></div>
-                <div class="about-card"><h3>COLECCIONES</h3><p>Una colección real carga y muestra sus productos.</p></div>
-                <div class="about-card"><h3>PDP</h3><p>Se abre una ficha de producto y se puede añadir al carrito.</p></div>
-                <div class="about-card"><h3>OTROS</h3><p>Se llega al pago (sin comprar), el buscador devuelve resultados, y la moneda/idioma son los correctos del país.</p></div>
-              </div>
-            </div>
           </section>
 
           <!-- Vista: Comparativa -->
@@ -700,13 +713,18 @@
           '<p class="cmp-legend">Cada celda muestra el resultado por vista (<b>Escr</b>itorio · <b>Móv</b>il · <b>Gen</b>eral). Pasa el ratón para ver el detalle. Las filas donde las tiendas difieren van resaltadas.</p>';
       }
 
-      // Muestra la zona de resultados dentro de la misma pantalla «Validar» y baja hasta ella.
-      function showResults() {
-        setView('validar');
-        $('#resHead').style.display = 'flex';
-        $('#aboutBlock').style.display = 'none';
-        $('#resHead').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Abre la pantalla de Informe (una validación concreta). `backTo` = a dónde vuelve el botón.
+      let reportBack = 'historial';
+      function openReport(backTo) {
+        reportBack = backTo || 'historial';
+        document.querySelectorAll('.view').forEach((s) => s.classList.toggle('active', s.dataset.view === 'report'));
+        // Mantén resaltada en el menú la sección de la que venimos (Validar o Historial).
+        document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === reportBack));
+        $('#backBtn').textContent = reportBack === 'validar' ? '← Volver a lanzar' : '← Volver al historial';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
+      function backFromReport() { setView(reportBack); }
+      window.backFromReport = backFromReport;
 
       function curVp() { const a = $('#vpseg .vps.active'); return (a && a.dataset.vp) || 'd'; }
 
@@ -742,7 +760,7 @@
         $('#busyBanner').textContent = 'Validación en curso. No lances otra hasta que termine.';
         $('#busyBanner').style.display = 'flex';
         $('#results').innerHTML = ids.map(runningCard).join('');
-        showResults(); // lleva al usuario a la pantalla de Resultados
+        openReport('validar'); // abre la pantalla de Informe con el progreso en vivo
         for (const id of ids) {
           try {
             await runOne(id);
@@ -843,16 +861,28 @@
       }
 
       let HIST = [];
-      let histPage = 0;
-      const HIST_PAGE_SIZE = 20;
-      const collapsedDays = new Set(); // días plegados (por clave de fecha)
+      const HIST_STEP = 20; // cuántas filas añade «cargar más»
+      let histShown = HIST_STEP;
+      const histFilters = { store: 'all', fails: false, full: false };
 
       async function loadHistory() {
         HIST = await fetch('/api/history').then((r) => r.json()).catch(() => []);
         $('#histCount').textContent = HIST.length || '';
-        if (histPage * HIST_PAGE_SIZE >= HIST.length) histPage = Math.max(0, Math.ceil(HIST.length / HIST_PAGE_SIZE) - 1);
         renderHistory();
       }
+
+      // Aplica el conjunto de filtros actuales al historial (más reciente primero).
+      function filteredHist() {
+        let list = HIST;
+        if (histFilters.store !== 'all') list = list.filter((h) => h.store === histFilters.store);
+        if (histFilters.fails) list = list.filter((h) => !h.ok);
+        if (histFilters.full) list = list.filter((h) => !(h.blocks && h.blocks.length));
+        return list;
+      }
+      function setHF(key, val) { histFilters[key] = val; histShown = HIST_STEP; renderHistory(); }
+      window.setHF = setHF;
+      function histMore() { histShown += HIST_STEP; renderHistory(); }
+      window.histMore = histMore;
 
       // Sparkline SVG de una serie de valores (cronológica). Resalta el último punto.
       function sparkline(vals) {
@@ -894,64 +924,48 @@
         return cards ? '<div class="trend-wrap">' + cards + '</div>' : '';
       }
 
+      // Barra de filtros del historial (tienda / solo fallos / solo completas).
+      function filterBar() {
+        const opts = ['<option value="all"' + (histFilters.store === 'all' ? ' selected' : '') + '>Todas</option>']
+          .concat(STORES.map((s) => '<option value="' + s.id + '"' + (histFilters.store === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'))
+          .join('');
+        return '<div class="hfilters">' +
+          '<label>Tienda <select onchange="setHF(\'store\', this.value)">' + opts + '</select></label>' +
+          '<label class="hchk"><input type="checkbox"' + (histFilters.fails ? ' checked' : '') + ' onchange="setHF(\'fails\', this.checked)"> Solo fallos</label>' +
+          '<label class="hchk"><input type="checkbox"' + (histFilters.full ? ' checked' : '') + ' onchange="setHF(\'full\', this.checked)"> Solo completas</label>' +
+          '</div>';
+      }
+
       function renderHistory() {
         const box = $('#histTable');
-        if (!HIST.length) { box.innerHTML = '<div class="empty">Sin ejecuciones todavía. Lanza una validación desde «Lanzar validación».</div>'; return; }
-        const pages = Math.ceil(HIST.length / HIST_PAGE_SIZE);
-        const slice = HIST.slice(histPage * HIST_PAGE_SIZE, histPage * HIST_PAGE_SIZE + HIST_PAGE_SIZE);
-        const dayKeyOf = (s) => new Date(s).toDateString();
-        const dayFmt = (s) => new Date(s).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-        const counts = {};
-        for (const h of slice) counts[dayKeyOf(h.startedAt)] = (counts[dayKeyOf(h.startedAt)] || 0) + 1;
+        if (!HIST.length) { box.innerHTML = '<div class="empty">Sin ejecuciones todavía. Lanza una validación desde «Validar».</div>'; return; }
+        const list = filteredHist();
+        const slice = list.slice(0, histShown);
+        const dtFmt = (s) => new Date(s).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-        let html = '';
-        let lastDay = '';
-        let open = false; // ¿estamos dentro de un grupo de día abierto?
+        let cards = '';
         for (const h of slice) {
-          const dk = dayKeyOf(h.startedAt);
-          if (dk !== lastDay) {
-            if (open) { html += '</div></div>'; open = false; } // cierra el grupo anterior
-            const col = collapsedDays.has(dk);
-            html +=
-              '<div class="hday-group"><button class="hday-hdr" onclick="toggleDay(\'' + dk + '\')">' +
-              '<span class="chev">' + (col ? '▸' : '▾') + '</span>' + dayFmt(h.startedAt) +
-              '<span class="hday-n">' + counts[dk] + '</span></button>';
-            if (!col) { html += '<div class="hcards">'; open = true; }
-            lastDay = dk;
-          }
-          if (collapsedDays.has(dk)) continue; // día plegado: no se pintan sus tarjetas
           const partial = h.blocks && h.blocks.length;
           const tipo = partial
             ? '<span class="hc-type partial" title="Corrida parcial">' + esc(h.blocks.join(', ')) + '</span>'
             : '<span class="hc-type">completa</span>';
-          const hora = new Date(h.startedAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
           const carga = h.perf ? ' · ' + (h.perf.loadMs / 1000).toFixed(1) + ' s carga' : '';
-          html +=
-            '<div class="hcard ' + (h.ok ? 'ok' : 'fail') + '" onclick="showRun(\'' + h.runId + '\', this)">' +
+          cards +=
+            '<div class="hcard ' + (h.ok ? 'ok' : 'fail') + '" onclick="showRun(\'' + h.runId + '\', this, \'historial\')">' +
             '<span class="hc-status ' + (h.ok ? 'ok' : 'fail') + '">' + (h.ok ? '✓' : '✗') + '</span>' +
             '<div class="hc-main"><div class="hc-line1"><b>' + esc(h.storeName) + '</b>' + tipo +
             ' <span class="hc-score">' + h.passed + '/' + h.total + '</span></div>' +
-            '<div class="hc-line2">' + hora + carga + ' · ' + (h.durationMs / 1000).toFixed(0) + ' s</div></div>' +
+            '<div class="hc-line2">' + dtFmt(h.startedAt) + carga + ' · ' + (h.durationMs / 1000).toFixed(0) + ' s</div></div>' +
             '<button class="del" title="Borrar" onclick="event.stopPropagation(); delRun(\'' + h.runId + '\')">✕</button></div>';
         }
-        if (open) html += '</div></div>';
-        const pager = pages > 1
-          ? '<div class="pager"><button class="pg" ' + (histPage === 0 ? 'disabled' : '') + ' onclick="histGo(-1)">← Anteriores</button>' +
-            '<span class="pg-info">Página ' + (histPage + 1) + ' de ' + pages + '</span>' +
-            '<button class="pg" ' + (histPage >= pages - 1 ? 'disabled' : '') + ' onclick="histGo(1)">Siguientes →</button></div>'
+        const body = slice.length
+          ? '<div class="hcards">' + cards + '</div>'
+          : '<div class="empty">No hay validaciones con esos filtros.</div>';
+        const more = list.length > histShown
+          ? '<button class="hmore" onclick="histMore()">Cargar ' + Math.min(HIST_STEP, list.length - histShown) + ' más (' + (list.length - histShown) + ' restantes)</button>'
           : '';
-        box.innerHTML = trendPanel() + html + pager;
+        box.innerHTML = trendPanel() + filterBar() + body + more;
       }
-
-      function histGo(d) { histPage += d; renderHistory(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
-      window.histGo = histGo;
-
-      function toggleDay(dk) {
-        if (collapsedDays.has(dk)) collapsedDays.delete(dk);
-        else collapsedDays.add(dk);
-        renderHistory();
-      }
-      window.toggleDay = toggleDay;
 
       async function delRun(runId) {
         if (!confirm('¿Borrar esta validación del historial? No se puede deshacer.')) return;
@@ -961,13 +975,13 @@
       }
       window.delRun = delRun;
 
-      async function showRun(runId, el) {
+      async function showRun(runId, el, backTo) {
         const d = await fetch('/api/run/' + runId).then((r) => (r.ok ? r.json() : null)).catch(() => null);
         if (!d) return;
-        $('#results').innerHTML = card(d); // el informe se ve en la misma pantalla «Validar»
-        showResults();
+        $('#results').innerHTML = card(d); // el informe abre en su propia pantalla
+        openReport(backTo || 'historial');
+        applyViewport(curVp()); // deja el filtro de vista consistente
         closeBell();
-        document.querySelectorAll('.hcard').forEach((x) => x.classList.toggle('active', x === el));
       }
       window.showRun = showRun;
 
