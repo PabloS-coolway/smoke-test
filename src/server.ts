@@ -67,10 +67,10 @@ app.get('/api/compare', requireAuth, async (_req, res) => {
   const out: unknown[] = [];
   for (const h of hist) {
     if (seen.has(h.store)) continue;
-    if (h.blocks && h.blocks.length) continue; // solo corridas completas (todos los bloques)
-    seen.add(h.store);
     const full = await getRun(h.runId);
     if (!full) continue;
+    if (full.blocks && full.blocks.length) continue; // parcial: sigue buscando la última COMPLETA de esa tienda
+    seen.add(h.store);
     const cks: Record<string, { d?: boolean; m?: boolean; g?: boolean }> = {};
     for (const it of full.items) {
       if (it.level !== 'check') continue;

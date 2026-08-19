@@ -283,6 +283,10 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
       ...(headers ? { extraHTTPHeaders: headers } : {}),
     });
     const page = await context.newPage();
+    // Shim: tsx/esbuild inyecta llamadas `__name(...)` (keepNames) en las arrow-functions con nombre
+    // que van dentro de page.evaluate; en el navegador `__name` no existe y peta. Se define como no-op.
+    // Va como STRING para que esbuild NO lo transforme (si no, se __name-aría a sí mismo).
+    await page.addInitScript('window.__name = window.__name || function (n) { return n; };');
 
     const jsErrors: string[] = [];
     page.on('pageerror', (e) => {
