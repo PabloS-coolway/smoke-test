@@ -59,8 +59,8 @@ const DEFAULT_REGION = REGION_DEFAULTS.en;
 const clean = (s?: string) => (s ?? '').trim().replace(/\/+$/, '');
 const env = (s?: string) => (s ?? '').trim() || undefined;
 
-/** Forma cruda de una tienda en el JSON `STORES` (todo opcional salvo lo básico; se valida al mapear). */
-interface RawStore {
+/** Forma cruda de una tienda (en `STORES` o en la config gestionada). Todo opcional salvo lo básico. */
+export interface RawStore {
   id?: string;
   name?: string;
   url?: string;
@@ -70,10 +70,39 @@ interface RawStore {
   addToCart?: string[];
   searchTerm?: string;
   proxy?: string;
+  /** Firma Web Bot Auth por tienda cuando se gestiona desde la UI (si no, cae a la env). */
+  sig?: string;
+  sigInput?: string;
 }
 
-/** Lee la lista cruda de tiendas: de `STORES` (JSON) si existe; si no, el modelo compat de 2 tiendas. */
+// --- Config gestionada desde la UI (persistida en el almacenamiento) --------
+// `stores()` es SÍNCRONO (lo usan endpoints y el runner), así que la lista gestionada se cachea en
+// memoria: se carga al arrancar (loadManagedStores) y se refresca al guardar (saveManagedStores).
+// `null` = no hay config gestionada todavía → se usa el modelo por entorno (STORES / EU-US).
+import { storage } from './storage';
+const MANAGED_KEY = 'stores.json';
+let managed: RawStore[] | null = null;
+
+/** Carga la lista de tiendas gestionada desde el almacenamiento a la caché (al arrancar). */
+export async function loadManagedStores(): Promise<void> {
+  const list = await storage.getJson<RawStore[]>(MANAGED_KEY);
+  managed = Array.isArray(list) ? list : null;
+}
+
+/** Persiste la lista gestionada y refresca la caché. La UI la usa para dar de alta/editar/borrar. */
+export async function saveManagedStores(list: RawStore[]): Promise<void> {
+  managed = list;
+  await storage.putJson(MANAGED_KEY, list);
+}
+
+/** ¿La app está usando la config gestionada (UI) en vez de las variables de entorno? */
+export function isManaged(): boolean {
+  return managed !== null;
+}
+
+/** Lee la lista cruda de tiendas: la gestionada (UI) si existe; si no, `STORES` (JSON); si no, compat. */
 function rawStores(): RawStore[] {
+  if (managed !== null) return managed; // config gestionada desde la UI (tiene prioridad)
   const raw = (process.env.STORES ?? '').trim();
   if (raw) {
     try {
@@ -117,8 +146,9 @@ export function stores(): StoreConfig[] {
         addToCart: s.addToCart && s.addToCart.length ? s.addToCart : r.addToCart,
         searchTerm: s.searchTerm || r.searchTerm,
         proxy: s.proxy || sec.proxy,
-        sig: sec.sig,
-        sigInput: sec.sigInput,
+        // Firma: la de la config gestionada (UI) tiene prioridad; si no, la de entorno.
+        sig: env(s.sig) ?? sec.sig,
+        sigInput: env(s.sigInput) ?? sec.sigInput,
       };
       return cfg;
     })

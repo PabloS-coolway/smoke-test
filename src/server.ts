@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
-import { stores, storeById } from './stores';
-import type { StoreConfig } from './stores';
+import { stores, storeById, loadManagedStores, saveManagedStores, isManaged } from './stores';
+import type { StoreConfig, RawStore } from './stores';
 import { BLOCKS, CHIPS, SELECTORS, deleteRun, getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
 import { reloadSchedule, scheduleSummary, startScheduler } from './scheduler';
 import { getConfig, setConfig } from './config';
@@ -237,6 +237,70 @@ app.post('/api/config', requireAuth, async (req, res) => {
   res.json({ ...cfg, summary: scheduleSummary(cfg), alertsOn: !!process.env.SLACK_WEBHOOK_URL });
 });
 
+// --- Gestión de tiendas desde la UI ----------------------------------------
+/** Días que le quedan a una firma Web Bot Auth (o null si no hay firma). */
+function sigDaysLeftOf(sigInput?: string): number | null {
+  if (!sigInput) return null;
+  const m = sigInput.match(/expires=(\d+)/);
+  return m ? Math.floor((Number(m[1]) - Date.now() / 1000) / 86400) : null;
+}
+
+/** Ficha editable de cada tienda (SIN exponer la firma en claro: solo si está puesta y cuánto le queda). */
+app.get('/api/store-config', requireAuth, (_req, res) => {
+  const list = stores().map((s) => ({
+    id: s.id,
+    name: s.name,
+    url: s.baseUrl,
+    lang: s.lang,
+    currency: s.currency,
+    searchTerm: s.searchTerm,
+    proxy: s.proxy ?? '',
+    hasSig: !!(s.sig && s.sigInput),
+    sigDaysLeft: sigDaysLeftOf(s.sigInput),
+  }));
+  res.json({ managed: isManaged(), stores: list });
+});
+
+/** Guarda la lista de tiendas (alta/edición/borrado desde la UI). La firma en blanco = se conserva la
+ *  actual (no se reenvía al navegador, así que un guardado normal no la borra). */
+app.post('/api/store-config', requireAuth, async (req, res) => {
+  const body = (req.body ?? {}) as { stores?: Array<Record<string, unknown>> };
+  if (!Array.isArray(body.stores)) return res.status(400).json({ error: 'Falta la lista de tiendas.' });
+  const seen = new Set<string>();
+  const out: RawStore[] = [];
+  for (const raw of body.stores) {
+    const id = String(raw.id ?? '').trim().toLowerCase();
+    const name = String(raw.name ?? '').trim();
+    const url = String(raw.url ?? '').trim();
+    const lang = String(raw.lang ?? '').trim().toLowerCase() || 'en';
+    if (!/^[a-z0-9-]{1,20}$/.test(id)) return res.status(400).json({ error: `id inválido: "${id}" (usa minúsculas, números y guiones).` });
+    if (seen.has(id)) return res.status(400).json({ error: `id duplicado: "${id}".` });
+    if (!name) return res.status(400).json({ error: `Falta el nombre de "${id}".` });
+    if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: `URL inválida en "${id}".` });
+    seen.add(id);
+    // Firma: si viene en blanco, se conserva la actual (la de la config previa/entorno para ese id).
+    const prev = storeById(id);
+    const sig = String(raw.sig ?? '').trim() || prev?.sig || '';
+    const sigInput = String(raw.sigInput ?? '').trim() || prev?.sigInput || '';
+    const currency = String(raw.currency ?? '').trim();
+    const searchTerm = String(raw.searchTerm ?? '').trim();
+    const proxy = String(raw.proxy ?? '').trim();
+    const entry: RawStore = { id, name, url, lang };
+    if (currency) entry.currency = currency;
+    if (searchTerm) entry.searchTerm = searchTerm;
+    if (proxy) entry.proxy = proxy;
+    if (sig) entry.sig = sig;
+    if (sigInput) entry.sigInput = sigInput;
+    out.push(entry);
+  }
+  await saveManagedStores(out);
+  const list = stores().map((s) => ({
+    id: s.id, name: s.name, url: s.baseUrl, lang: s.lang, currency: s.currency, searchTerm: s.searchTerm,
+    proxy: s.proxy ?? '', hasSig: !!(s.sig && s.sigInput), sigDaysLeft: sigDaysLeftOf(s.sigInput),
+  }));
+  res.json({ managed: isManaged(), stores: list });
+});
+
 /** Reinicia la referencia de regresión visual de una tienda: borra la baseline para que la próxima
  *  corrida capture una nueva (tras un rediseño intencionado). */
 app.post('/api/baseline/reset', requireAuth, async (req, res) => {
@@ -295,15 +359,19 @@ app.post('/api/run', requireAuth, (req, res) => {
 // La UI (estática) va al final; su JS pedirá /api/session y mostrará el login si hace falta.
 app.use(express.static(path.resolve('public')));
 
-app.listen(PORT, () => {
-  const list =
-    stores()
-      .map((s) => `${s.name} (${s.baseUrl})${s.proxy ? ' [proxy]' : ''}${s.sig && s.sigInput ? ' [web-bot-auth]' : ''}`)
-      .join(', ') || '(ninguna configurada)';
-  console.log(`coolway-smoke escuchando en http://localhost:${PORT}`);
-  console.log(`Tiendas: ${list}`);
-  console.log(`Historial: ${storage.describe()}`);
-  console.log(`Login: ${authEnabled() ? 'activado' : 'desactivado (abierto)'}`);
-  console.log(`Alertas: ${process.env.SLACK_WEBHOOK_URL ? 'Slack (webhook)' : 'desactivadas'}`);
-  startScheduler();
+// Carga la config de tiendas gestionada desde la UI (si existe) ANTES de servir, para que `stores()`
+// —que es síncrono— ya tenga la caché lista. Si no hay, se usa el modelo por entorno.
+loadManagedStores().finally(() => {
+  app.listen(PORT, () => {
+    const list =
+      stores()
+        .map((s) => `${s.name} (${s.baseUrl})${s.proxy ? ' [proxy]' : ''}${s.sig && s.sigInput ? ' [web-bot-auth]' : ''}`)
+        .join(', ') || '(ninguna configurada)';
+    console.log(`coolway-smoke escuchando en http://localhost:${PORT}`);
+    console.log(`Tiendas: ${list}${isManaged() ? ' [gestionadas por UI]' : ''}`);
+    console.log(`Historial: ${storage.describe()}`);
+    console.log(`Login: ${authEnabled() ? 'activado' : 'desactivado (abierto)'}`);
+    console.log(`Alertas: ${process.env.SLACK_WEBHOOK_URL ? 'Slack (webhook)' : 'desactivadas'}`);
+    startScheduler();
+  });
 });

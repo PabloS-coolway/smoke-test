@@ -33,7 +33,9 @@
       .app { display: flex; min-height: 100vh; }
       .sidebar { width: var(--sidebar-w); flex: none; background: var(--side); border-right: 1px solid var(--line); padding: var(--sp-5) var(--sp-3); position: sticky; top: 0; height: 100vh; }
       .main { flex: 1; min-width: 0; padding: var(--sp-6) var(--sp-6) var(--sp-8); }
-      .content { max-width: 780px; margin: 0 auto; }
+      .content { max-width: 1100px; margin: 0 auto; }
+      /* Vistas de lectura (formularios, informe, listas) a ancho cómodo; Home y Comparativa usan todo. */
+      .view.narrow { max-width: 780px; margin: 0 auto; }
       @media (max-width: 860px) {
         .app { flex-direction: column; }
         .sidebar { width: auto; height: auto; position: static; border-right: 0; border-bottom: 1px solid var(--line); padding: var(--sp-3) var(--sp-4); }
@@ -76,6 +78,27 @@
       .nd-seen { font: inherit; font-size: 12px; font-weight: 600; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 2px 4px; }
       .nd-seen:hover { text-decoration: underline; }
       @media (max-width: 860px) { .notif-drop { position: fixed; right: var(--sp-4); left: var(--sp-4); width: auto; } }
+
+      /* Tiendas: alta/edición */
+      .store-row { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-4); margin-bottom: var(--sp-3); }
+      .store-row.nuevo { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+      .sr-grid { display: grid; grid-template-columns: 90px 1fr 1fr 110px; gap: var(--sp-3); }
+      @media (max-width: 620px) { .sr-grid { grid-template-columns: 1fr 1fr; } }
+      .store-row label { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+      .store-row input, .store-row select { font: inherit; font-size: 13.5px; color: var(--ink); background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px; padding: 7px 9px; min-width: 0; }
+      .store-row input[readonly] { background: var(--panel-2); color: var(--muted); }
+      .sr-sig { margin-top: var(--sp-3); display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); align-items: end; }
+      @media (max-width: 620px) { .sr-sig { grid-template-columns: 1fr; } }
+      .sr-sigstate { grid-column: 1 / -1; font-size: 12px; font-weight: 600; }
+      .sr-sigstate.ok { color: var(--ok); } .sr-sigstate.warn { color: var(--warn); } .sr-sigstate.none { color: var(--faint); }
+      .sr-adv { margin-top: var(--sp-3); }
+      .sr-adv summary { font-size: 12px; color: var(--muted); font-weight: 600; cursor: pointer; }
+      .sr-adv .sr-grid { margin-top: var(--sp-2); grid-template-columns: 1fr 1fr 1fr; }
+      @media (max-width: 620px) { .sr-adv .sr-grid { grid-template-columns: 1fr; } }
+      .sr-foot { display: flex; justify-content: flex-end; margin-top: var(--sp-3); }
+      .mini.danger { color: var(--fail); border-color: var(--line-2); }
+      .mini.danger:hover { background: var(--fail-bg); }
+      .tiendas-foot { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-4); flex-wrap: wrap; }
 
       /* Home: KPIs */
       .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-3); margin-bottom: var(--sp-5); }
@@ -247,6 +270,24 @@
       .cdot.cok { background: var(--ok-bg); color: var(--ok); } .cdot.cfail { background: var(--fail-bg); color: var(--fail); }
       .cmp-legend { font-size: 12px; color: var(--faint); margin-top: var(--sp-3); }
 
+      /* Comparativa como MAPA DE CALOR (escala a muchas tiendas) */
+      .cmp-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+      .cmptable.heat { border-collapse: collapse; border: 0; border-radius: 0; width: auto; min-width: 100%; }
+      .cmptable.heat th, .cmptable.heat td { border: 1px solid var(--line); padding: 0; }
+      .cmptable.heat .cmp-corner, .cmptable.heat .cmp-lbl { position: sticky; left: 0; z-index: 2; background: var(--panel); text-align: left; padding: 8px var(--sp-3); font-size: 13px; font-weight: 500; min-width: 180px; max-width: 240px; }
+      .cmptable.heat thead .cmp-corner { z-index: 3; background: var(--panel-2); font-family: var(--font-display); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); font-weight: 600; }
+      .cmptable.heat .hm-head { background: var(--panel-2); padding: 7px 6px; min-width: 62px; cursor: pointer; vertical-align: bottom; }
+      .cmptable.heat .hm-head:hover { background: var(--panel); }
+      .cmptable.heat .hm-head .cmp-store { font-size: 11.5px; line-height: 1.15; overflow-wrap: anywhere; }
+      .cmptable.heat .hm-head .cmp-sub { font-size: 10px; }
+      .cmptable.heat td.hm { text-align: center; font-size: 12px; font-weight: 700; height: 30px; }
+      .cmptable.heat td.hm.ok { background: var(--ok-bg); color: var(--ok); }
+      .cmptable.heat td.hm.fail { background: var(--fail-bg); color: var(--fail); }
+      .cmptable.heat td.hm.na { background: var(--panel-2); color: var(--faint); }
+      .cmptable.heat tr.cmp-diff .cmp-lbl { font-weight: 700; box-shadow: inset 3px 0 0 var(--fail); }
+      .cmptable.heat tr.cmp-grp td { position: sticky; left: 0; background: var(--panel-2); font-family: var(--font-display); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); font-weight: 600; text-align: left; padding: 6px var(--sp-3); }
+      .cmp-lg { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; vertical-align: -4px; }
+
       /* Tarjeta de resultado (compartida) */
       .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-5); margin-top: var(--sp-4); animation: rise 240ms var(--ease-out); }
       @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -343,6 +384,7 @@
           <button class="nav-item" data-view="validar"><span class="n-ico"></span>Validar</button>
           <button class="nav-item" data-view="comparativa"><span class="n-ico"></span>Comparativa</button>
           <button class="nav-item" data-view="historial"><span class="n-ico"></span>Historial<span class="n-count" id="histCount"></span></button>
+          <button class="nav-item" data-view="tiendas"><span class="n-ico"></span>Tiendas<span class="n-count" id="tiendasCount"></span></button>
           <button class="nav-item" data-view="ajustes"><span class="n-ico"></span>Ajustes</button>
         </nav>
         <button id="logout" class="logout" style="display:none">Cerrar sesión</button>
@@ -379,7 +421,7 @@
           </section>
 
           <!-- Vista: Validar (solo lanzar) -->
-          <section class="view" data-view="validar">
+          <section class="view narrow" data-view="validar">
             <h1>Validar las tiendas</h1>
             <p class="lead">Comprueba que las funcionalidades clave de las tiendas siguen funcionando, en escritorio y móvil. Lánzalo después de cada cambio o deploy.</p>
 
@@ -401,7 +443,7 @@
           </section>
 
           <!-- Vista: Informe (una validación concreta, con su propio Volver) -->
-          <section class="view" data-view="report">
+          <section class="view narrow" data-view="report">
             <div class="report-head">
               <button class="back" id="backBtn" onclick="backFromReport()">← Volver</button>
               <div class="vpseg" id="vpseg">
@@ -421,7 +463,7 @@
           </section>
 
           <!-- Vista: Ajustes -->
-          <section class="view" data-view="ajustes">
+          <section class="view narrow" data-view="ajustes">
             <h1>Ajustes</h1>
             <p class="lead">Programación de validaciones automáticas y referencia de regresión visual. Los avisos viven ahora en la 🔔 de arriba.</p>
 
@@ -459,10 +501,22 @@
           </section>
 
           <!-- Vista: Historial -->
-          <section class="view" data-view="historial">
+          <section class="view narrow" data-view="historial">
             <h1>Historial</h1>
             <p class="lead">Cada validación queda registrada. Pulsa una fila para ver su informe completo.</p>
             <div id="histTable"></div>
+          </section>
+
+          <!-- Vista: Tiendas (alta/edición/borrado) -->
+          <section class="view narrow" data-view="tiendas">
+            <h1>Tiendas</h1>
+            <p class="lead">Da de alta, edita o quita tiendas sin tocar configuración. Al ser variantes del mismo tema, con la URL y el idioma basta; pega aquí la firma Web Bot Auth de cada una.</p>
+            <div id="storeList"></div>
+            <div class="tiendas-foot">
+              <button class="btn ghost" id="addStore">+ Añadir tienda</button>
+              <button class="btn" id="saveStores">Guardar cambios</button>
+              <span class="sched-status" id="storeMsg"></span>
+            </div>
           </section>
         </div>
       </main>
@@ -509,9 +563,6 @@
         STORES = cfg.stores;
         BLOCKS = cfg.blocks || [];
         CHIPS = cfg.chips || [];
-        // Selector de tienda para la regresión visual (Ajustes).
-        const bs = $('#baseStore');
-        if (bs) bs.innerHTML = STORES.map((s) => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
 
         // Selector: Todo + un chip por bloque + chips de tests sueltos (single-select).
         const seg = $('#blockseg');
@@ -534,13 +585,32 @@
           for (const c of CHIPS) seg.appendChild(mkChip(c.chip, c.value, 'blk-test'));
         }
 
-        // Tiendas: una fila por tienda con su botón (corre el bloque seleccionado).
+        buildStoreUI(); // lista de «Lanzar en» + selector de tienda de la regresión visual
+
+        document.querySelectorAll('.nav-item').forEach((n) => (n.onclick = () => setView(n.dataset.view)));
+        // Selector de vista fijo (Escritorio / Móvil / Ambos) sobre todo el área de resultados.
+        $('#vpseg').querySelectorAll('.vps').forEach((btn) => {
+          btn.onclick = () => applyViewport(btn.dataset.vp);
+        });
+        loadHome(); // vista por defecto: Resumen
+        loadHistory();
+        syncBusy();
+        loadWarnings();
+        loadNotifications(); // fija el badge de notificaciones al arrancar
+        if (!busyTimer) busyTimer = setInterval(syncBusy, 4000);
+      }
+
+      // Construye la parte de la UI que depende de STORES: la lista de «Lanzar en» y el selector de
+      // tienda de la regresión visual. Se llama al arrancar y tras editar tiendas (para reflejarlo ya).
+      function buildStoreUI() {
+        const bs = $('#baseStore');
+        if (bs) bs.innerHTML = STORES.map((s) => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
         const launch = $('#launch');
         launch.innerHTML = '';
         for (const s of STORES) {
           const row = document.createElement('div');
           row.className = 'l-item';
-          row.innerHTML = '<span class="l-name">' + s.name + '</span><span class="l-url">' + s.baseUrl.replace(/^https?:\/\//, '') + '</span>';
+          row.innerHTML = '<span class="l-name">' + esc(s.name) + '</span><span class="l-url">' + esc(s.baseUrl.replace(/^https?:\/\//, '')) + '</span>';
           const act = document.createElement('span'); act.className = 'l-act';
           const b = document.createElement('button'); b.className = 'btn'; b.dataset.store = s.id; b.textContent = 'Probar';
           b.onclick = () => run([s.id]); act.appendChild(b); row.appendChild(act);
@@ -554,19 +624,15 @@
           b.onclick = () => run(STORES.map((s) => s.id)); act.appendChild(b); row.appendChild(act);
           launch.appendChild(row);
         }
-        if (STORES.length === 0) launch.innerHTML = '<div class="l-item"><span class="err">No hay tiendas configuradas (STORE_EU_URL / STORE_US_URL).</span></div>';
+        if (STORES.length === 0) launch.innerHTML = '<div class="l-item"><span class="err">No hay tiendas todavía. Añádelas en «Tiendas».</span></div>';
+      }
 
-        document.querySelectorAll('.nav-item').forEach((n) => (n.onclick = () => setView(n.dataset.view)));
-        // Selector de vista fijo (Escritorio / Móvil / Ambos) sobre todo el área de resultados.
-        $('#vpseg').querySelectorAll('.vps').forEach((btn) => {
-          btn.onclick = () => applyViewport(btn.dataset.vp);
-        });
-        loadHome(); // vista por defecto: Resumen
-        loadHistory();
-        syncBusy();
-        loadWarnings();
-        loadNotifications(); // fija el badge de notificaciones al arrancar
-        if (!busyTimer) busyTimer = setInterval(syncBusy, 4000);
+      // Tras editar tiendas: recarga STORES y reconstruye la parte de la UI que depende de ellas.
+      async function refreshStoresGlobal() {
+        const cfg = await fetch('/api/stores').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        if (!cfg) return;
+        STORES = cfg.stores; BLOCKS = cfg.blocks || BLOCKS; CHIPS = cfg.chips || CHIPS;
+        buildStoreUI();
       }
 
       // Avisos globales (firma Web Bot Auth próxima a caducar).
@@ -618,8 +684,98 @@
         if (v === 'home') loadHome();
         if (v === 'historial') loadHistory();
         if (v === 'comparativa') loadCompare();
+        if (v === 'tiendas') loadStoreConfig();
         if (v === 'ajustes') loadConfig();
       }
+
+      // ---- Tiendas (alta / edición / borrado) -----------------------------------
+      const LANGS = [['es', 'Español'], ['en', 'English'], ['fr', 'Français'], ['de', 'Deutsch'], ['it', 'Italiano'], ['pt', 'Português']];
+
+      async function loadStoreConfig() {
+        const d = await fetch('/api/store-config').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        if (!d) return;
+        $('#tiendasCount').textContent = d.stores.length || '';
+        $('#storeList').innerHTML = d.stores.map((s) => storeRow(s)).join('');
+        $('#storeMsg').textContent = d.managed ? '' : 'Aún por variables de entorno — al guardar pasan a gestionarse desde aquí.';
+      }
+
+      function sigState(s) {
+        if (s._new || !s.hasSig) return '<span class="sr-sigstate none">Sin firma — sin ella la tienda puede ser bloqueada por Cloudflare.</span>';
+        const dl = s.sigDaysLeft;
+        if (dl == null) return '<span class="sr-sigstate ok">Firma configurada ✓</span>';
+        if (dl < 0) return '<span class="sr-sigstate warn">⏰ Firma caducada — pega una nueva.</span>';
+        const cls = dl <= 21 ? 'warn' : 'ok';
+        return '<span class="sr-sigstate ' + cls + '">Firma configurada ✓ · caduca en ' + dl + ' día(s)' + (dl <= 21 ? ' — conviene renovar' : '') + '.</span>';
+      }
+
+      function storeRow(s) {
+        const nuevo = !!s._new;
+        const langOpts = LANGS.map(([v, l]) => '<option value="' + v + '"' + (s.lang === v ? ' selected' : '') + '>' + l + '</option>').join('');
+        return '<div class="store-row' + (nuevo ? ' nuevo' : '') + '"' + (nuevo ? ' data-new="1"' : '') + '>' +
+          '<div class="sr-grid">' +
+            '<label>ID <input class="in-id" value="' + esc(s.id || '') + '"' + (nuevo ? '' : ' readonly') + ' placeholder="fr" maxlength="20"></label>' +
+            '<label>Nombre <input class="in-name" value="' + esc(s.name || '') + '" placeholder="Francia"></label>' +
+            '<label>URL <input class="in-url" value="' + esc(s.url || '') + '" placeholder="https://coolway.fr"></label>' +
+            '<label>Idioma <select class="in-lang">' + langOpts + '</select></label>' +
+          '</div>' +
+          '<div class="sr-sig">' + sigState(s) +
+            '<label>Signature <input class="in-sig" placeholder="' + (s.hasSig ? 'pegar nueva (en blanco = mantener)' : 'pegar firma') + '"></label>' +
+            '<label>Signature-Input <input class="in-siginput" placeholder="' + (s.hasSig ? 'pegar nueva (en blanco = mantener)' : 'pegar signature-input') + '"></label>' +
+          '</div>' +
+          '<details class="sr-adv"><summary>Opciones avanzadas (por defecto se plantillan por idioma)</summary>' +
+            '<div class="sr-grid">' +
+              '<label>Moneda <input class="in-currency" value="' + esc(s.currency || '') + '" placeholder="€"></label>' +
+              '<label>Búsqueda <input class="in-search" value="' + esc(s.searchTerm || '') + '" placeholder="botas"></label>' +
+              '<label>Proxy <input class="in-proxy" value="' + esc(s.proxy || '') + '" placeholder="http://user:pass@host:port"></label>' +
+            '</div>' +
+          '</details>' +
+          '<div class="sr-foot"><button class="mini danger" onclick="delStore(this)">Borrar</button></div>' +
+        '</div>';
+      }
+
+      function addStoreCard() {
+        $('#storeList').insertAdjacentHTML('beforeend', storeRow({ _new: true, lang: 'es' }));
+        $('#storeList').lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      window.addStoreCard = addStoreCard;
+
+      function delStore(btn) {
+        const row = btn.closest('.store-row');
+        const isNew = row.dataset.new === '1';
+        if (!isNew && !confirm('¿Quitar esta tienda? Dejará de validarse.')) return;
+        row.remove();
+        if (!isNew) saveStores(); // persiste el borrado de una tienda ya guardada
+      }
+      window.delStore = delStore;
+
+      function collectStores() {
+        return Array.from(document.querySelectorAll('#storeList .store-row')).map((row) => ({
+          id: row.querySelector('.in-id').value.trim(),
+          name: row.querySelector('.in-name').value.trim(),
+          url: row.querySelector('.in-url').value.trim(),
+          lang: row.querySelector('.in-lang').value,
+          currency: row.querySelector('.in-currency').value.trim(),
+          searchTerm: row.querySelector('.in-search').value.trim(),
+          proxy: row.querySelector('.in-proxy').value.trim(),
+          sig: row.querySelector('.in-sig').value.trim(),
+          sigInput: row.querySelector('.in-siginput').value.trim(),
+        }));
+      }
+
+      async function saveStores() {
+        $('#storeMsg').textContent = 'Guardando…';
+        const r = await fetch('/api/store-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stores: collectStores() }) });
+        if (r.status === 401) { showLogin(); return; }
+        const d = await safeJson(r);
+        if (!r.ok) { $('#storeMsg').textContent = d.error || 'No se pudo guardar.'; return; }
+        $('#tiendasCount').textContent = d.stores.length || '';
+        $('#storeList').innerHTML = d.stores.map((s) => storeRow(s)).join('');
+        $('#storeMsg').textContent = 'Guardado ✓';
+        await refreshStoresGlobal(); // refleja los cambios en Validar / Resumen / filtros
+      }
+
+      $('#addStore').addEventListener('click', addStoreCard);
+      $('#saveStores').addEventListener('click', saveStores);
 
       // ---- Home / Resumen -------------------------------------------------------
       // Prioridad de salud para ordenar: los problemas primero (fallos → sin validar → OK).
@@ -811,32 +967,37 @@
         }
         labels.sort((a, b) => (order.indexOf(grpOf[a]) + 99) % 100 - (order.indexOf(grpOf[b]) + 99) % 100);
 
-        const head = '<th>Comprobación</th>' + st.map((s) => {
+        // Mapa de calor: cabecera = una tienda por columna (clicable → su informe); celda = un punto
+        // (verde/rojo/—) con el detalle por vista en el tooltip. Escala a muchas tiendas: 12 columnas de
+        // puntos sí caben (con scroll horizontal), 12 columnas de texto no.
+        const head = '<th class="cmp-corner">Comprobación</th>' + st.map((s) => {
           const dt = new Date(s.startedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
           const okcls = s.ok ? 'cmp-hok' : 'cmp-hfail';
-          return '<th><div class="cmp-store ' + okcls + '">' + esc(s.store) + '</div><div class="cmp-sub"><span class="score">' + s.passed + '/' + s.total + '</span> · ' + dt + (s.perf ? ' · ' + (s.perf.loadMs / 1000).toFixed(1) + 's' : '') + '</div></th>';
+          return '<th class="hm-head" title="Ver informe de ' + esc(s.store) + '" onclick="showRun(\'' + s.runId + '\', null, \'comparativa\')">' +
+            '<div class="cmp-store ' + okcls + '">' + esc(s.store) + '</div>' +
+            '<div class="cmp-sub">' + s.passed + '/' + s.total + ' · ' + dt + '</div></th>';
         }).join('');
+
+        const cmpCell = (c) => {
+          if (!c) return '<td class="hm na" title="no ejecutado">·</td>';
+          const vps = [['d', 'Escritorio'], ['m', 'Móvil'], ['g', 'General']].filter(([k]) => c[k]);
+          const anyFail = vps.some(([k]) => !c[k].ok);
+          const tip = vps.map(([k, lbl]) => lbl + ': ' + (c[k].ok ? '✓' : '✗') + ' ' + c[k].detail).join(' · ');
+          return '<td class="hm ' + (anyFail ? 'fail' : 'ok') + '" title="' + esc(tip) + '">' + (anyFail ? '✗' : '✓') + '</td>';
+        };
 
         let rows = ''; let lastG = '';
         for (const l of labels) {
           const g = grpOf[l];
           if (g !== lastG) { rows += '<tr class="cmp-grp"><td colspan="' + (st.length + 1) + '">' + g + '</td></tr>'; lastG = g; }
-          const overall = st.map((s) => { const c = s.checks[l]; if (!c) return null; const v = [c.d, c.m, c.g].filter(Boolean); return v.some((x) => !x.ok) ? false : true; });
+          const overall = st.map((s) => { const c = s.checks[l]; if (!c) return null; return ![c.d, c.m, c.g].filter(Boolean).some((x) => !x.ok); });
           const present = overall.filter((x) => x !== null);
           const diff = present.length > 1 && !present.every((x) => x === present[0]);
-          const cells = st.map((s) => {
-            const c = s.checks[l];
-            if (!c) return '<td class="cmp-na">—</td>';
-            const dots = ['d', 'm', 'g'].filter((k) => c[k]).map((k) => {
-              const cell = c[k]; const lbl = k === 'd' ? 'Escr' : k === 'm' ? 'Móv' : 'Gen';
-              return '<span class="cdot ' + (cell.ok ? 'cok' : 'cfail') + '" title="' + esc(cell.detail) + '">' + lbl + ' ' + (cell.ok ? '✓' : '✗') + '</span>';
-            }).join('');
-            return '<td>' + dots + '</td>';
-          }).join('');
+          const cells = st.map((s) => cmpCell(s.checks[l])).join('');
           rows += '<tr class="' + (diff ? 'cmp-diff' : '') + '"><td class="cmp-lbl">' + esc(l) + '</td>' + cells + '</tr>';
         }
-        box.innerHTML = '<table class="cmptable"><thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table>' +
-          '<p class="cmp-legend">Cada celda muestra el resultado por vista (<b>Escr</b>itorio · <b>Móv</b>il · <b>Gen</b>eral). Pasa el ratón para ver el detalle. Las filas donde las tiendas difieren van resaltadas.</p>';
+        box.innerHTML = '<div class="cmp-scroll"><table class="cmptable heat"><thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+          '<p class="cmp-legend"><span class="hm ok cmp-lg">✓</span> pasa · <span class="hm fail cmp-lg">✗</span> falla (en alguna vista) · <span class="hm na cmp-lg">·</span> no ejecutado. Pasa el ratón por una celda para el detalle; pulsa una tienda para su informe. Las filas donde difieren van resaltadas.</p>';
       }
 
       // Abre la pantalla de Informe (una validación concreta). `backTo` = a dónde vuelve el botón.
@@ -846,7 +1007,7 @@
         document.querySelectorAll('.view').forEach((s) => s.classList.toggle('active', s.dataset.view === 'report'));
         // Mantén resaltada en el menú la sección de la que venimos (Validar o Historial).
         document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === reportBack));
-        const backLabels = { home: '← Volver al resumen', validar: '← Volver a lanzar', historial: '← Volver al historial' };
+        const backLabels = { home: '← Volver al resumen', validar: '← Volver a lanzar', historial: '← Volver al historial', comparativa: '← Volver a la comparativa' };
         $('#backBtn').textContent = backLabels[reportBack] || '← Volver';
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
