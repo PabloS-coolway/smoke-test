@@ -126,18 +126,31 @@ async function nav(page: Page, url: string) {
   throw last;
 }
 
-/**
- * Cuenta elementos en una página tolerando cargas lentas (contenido que llega por JS): si sale 0,
- * espera un poco y vuelve a contar sobre la MISMA página. No recarga (evita amplificar peticiones y
- * provocar rate-limiting en la tienda).
- */
-async function countResilient(page: Page, url: string, selector: string): Promise<number> {
+/** Nº de PRODUCTOS ÚNICOS en la página (por handle), no de enlaces: cada ficha tiene varios enlaces
+ *  al mismo producto (imagen, título, swatches…), así que contar enlaces infla el número. */
+async function uniqueProducts(page: Page): Promise<number> {
+  try {
+    return await page.evaluate(() => {
+      const handles = new Set<string>();
+      document.querySelectorAll('a[href*="/products/"]').forEach((a) => {
+        const m = (a.getAttribute('href') || '').match(/\/products\/([a-z0-9._-]+)/i);
+        if (m && m[1] !== 'gift-card') handles.add(m[1].toLowerCase());
+      });
+      return handles.size;
+    });
+  } catch {
+    return 0;
+  }
+}
+
+/** Navega y cuenta productos únicos, con espera-y-recuenta si sale 0 (contenido cargado por JS). */
+async function countProducts(page: Page, url: string): Promise<number> {
   await nav(page, url);
   await dismissPopups(page);
-  let n = await page.locator(selector).count();
+  let n = await uniqueProducts(page);
   for (let i = 0; i < 2 && n === 0; i++) {
     await page.waitForTimeout(1500);
-    n = await page.locator(selector).count();
+    n = await uniqueProducts(page);
   }
   return n;
 }
@@ -319,7 +332,7 @@ export const checks: Check[] = [
     desc: 'Entra en una colección real de la tienda (descubierta del propio menú) y verifica que muestra productos.',
     run: async ({ page, store, disco }) => {
       if (!disco.collectionUrl) return { ok: false, detail: 'no se descubrió ninguna colección en el tema' };
-      const products = await countResilient(page, disco.collectionUrl, 'a[href*="/products/"]');
+      const products = await countProducts(page, disco.collectionUrl);
       const path = disco.collectionUrl.replace(store.baseUrl, '');
       return { ok: products > 0, detail: `${path} · ${products} productos (${disco.how})` };
     },
@@ -455,7 +468,7 @@ export const checks: Check[] = [
     desc: 'Busca un término habitual en la tienda y comprueba que devuelve productos.',
     run: async ({ page, store, disco }) => {
       const url = `${store.baseUrl}${disco.prefix}/search?q=${encodeURIComponent(store.searchTerm)}`;
-      const products = await countResilient(page, url, 'a[href*="/products/"]');
+      const products = await countProducts(page, url);
       return { ok: products > 0, detail: `"${store.searchTerm}" → ${products} resultados` };
     },
   },
