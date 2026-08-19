@@ -132,6 +132,7 @@
       .vp { display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; padding: 1px 7px; border-radius: 999px; margin-left: 8px; vertical-align: 1px; }
       .vp-d { background: var(--panel-2); color: var(--faint); border: 1px solid var(--line-2); }
       .vp-m { background: oklch(94% 0.03 250); color: oklch(45% 0.09 250); border: 1px solid oklch(88% 0.04 250); }
+      .vp-g { background: oklch(95% 0.02 150); color: oklch(45% 0.08 150); border: 1px solid oklch(88% 0.03 150); }
 
       /* Selector de bloque en Lanzar (Todo · HOME · COLECCIONES · PDP · OTROS) */
       .blockseg { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
@@ -482,9 +483,11 @@
         const perf = d.perf ? ' · carga ' + (d.perf.loadMs / 1000).toFixed(1) + ' s · TTFB ' + d.perf.ttfbMs + ' ms' : '';
 
         // Cuentas por vista (Escritorio/Móvil/Ambos) para que el badge cambie con el selector.
+        // Los checks "General" (enlaces rotos, redirects, stock) cuentan en cualquier vista.
         const chk = d.items.filter((i) => i.level === 'check');
+        const grp = (i) => (i.viewport === 'Móvil' ? 'm' : i.viewport === 'General' ? 'g' : 'd');
         const pack = (f) => {
-          const its = f === 'all' ? chk : chk.filter((i) => (i.viewport === 'Móvil' ? 'm' : 'd') === f);
+          const its = f === 'all' ? chk : chk.filter((i) => { const g = grp(i); return g === f || g === 'g'; });
           const pass = its.filter((i) => i.ok).length;
           return pass + '/' + its.length + '/' + (its.length && pass === its.length ? 1 : 0);
         };
@@ -503,7 +506,7 @@
             const cls = info ? (it.ok ? 'info' : 'warn') : it.ok ? 'ok' : 'fail';
             const sym = info ? (it.ok ? 'i' : '!') : it.ok ? '✓' : '✗';
             const desc = it.desc ? '<div class="desc">' + it.desc + '</div>' : '';
-            const dv = it.viewport === 'Móvil' ? 'm' : it.viewport === 'Escritorio' ? 'd' : '';
+            const dv = it.viewport === 'Móvil' ? 'm' : it.viewport === 'General' ? 'g' : it.viewport === 'Escritorio' ? 'd' : '';
             const vp = it.viewport ? '<span class="vp vp-' + (dv || 'd') + '">' + it.viewport + '</span>' : '';
             let extra = '';
             if (it.extra && it.extra.length) {

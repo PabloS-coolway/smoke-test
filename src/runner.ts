@@ -322,7 +322,10 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
       } catch {
         /* sin captura */
       }
-      return { group: check.group, label: check.label, desc: check.desc, viewport: vp.name, ok, detail, extra, shot, level };
+      // Los checks `once` (enlaces rotos, redirects, stock) no dependen de la vista: se etiquetan
+      // "General" para que se muestren y cuenten en cualquier vista (Escritorio/Móvil/Ambos).
+      const viewport = check.once ? 'General' : vp.name;
+      return { group: check.group, label: check.label, desc: check.desc, viewport, ok, detail, extra, shot, level };
     };
 
     // En móvil se saltan los checks `once` (no dependen de la vista: enlaces rotos, redirects, stock…).
