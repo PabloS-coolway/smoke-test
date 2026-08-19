@@ -160,6 +160,16 @@ app.post('/api/config', requireAuth, async (req, res) => {
   res.json({ ...cfg, summary: scheduleSummary(cfg), alertsOn: !!process.env.SLACK_WEBHOOK_URL });
 });
 
+/** Reinicia la referencia de regresión visual de una tienda: borra la baseline para que la próxima
+ *  corrida capture una nueva (tras un rediseño intencionado). */
+app.post('/api/baseline/reset', requireAuth, async (req, res) => {
+  const id = String((req.body as { store?: string })?.store ?? '');
+  const store = storeById(id);
+  if (!store) return res.status(400).json({ error: `Tienda desconocida: "${id}".` });
+  await storage.del(`baseline/${store.id}-home.png`);
+  res.json({ ok: true });
+});
+
 /** Estado global: ¿hay una validación en curso? (para que la UI bloquee lanzar otra). */
 app.get('/api/busy', requireAuth, (_req, res) => {
   const j = runningJob();

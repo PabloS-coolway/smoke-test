@@ -1,4 +1,7 @@
 import type { Locator, Page } from 'playwright';
+import pixelmatch from 'pixelmatch';
+import { PNG } from 'pngjs';
+import { storage } from './storage';
 import type { StoreConfig } from './stores';
 
 /**
@@ -663,6 +666,141 @@ export const checks: Check[] = [
         detail: list.length ? 'detectados: ' + list.join(', ') : 'no se detectó ninguna herramienta de medición',
         extra: list.length ? list.map((x) => '✓ ' + x) : undefined,
       };
+    },
+  },
+  {
+    group: 'PDP',
+    label: 'Elegir variante funciona',
+    desc: 'En la ficha, selecciona una variante disponible (p. ej. una talla) y comprueba que la selección se aplica y el producto sigue siendo comprable.',
+    chip: 'Variantes',
+    run: async ({ page, store, disco }) => {
+      if (!disco.productUrl) return { ok: false, detail: 'sin producto que probar (no descubierto)' };
+      await nav(page, disco.productUrl);
+      await dismissPopups(page);
+      const RADIO = 'form[action*="/cart/add"] input[type="radio"], variant-radios input[type="radio"], .product-form__input input[type="radio"]';
+      const SELECT = 'form[action*="/cart/add"] select, variant-selects select, .product-form__input select';
+      const counts = await page.evaluate(
+        ({ RADIO, SELECT }) => ({
+          radios: document.querySelectorAll(RADIO).length,
+          selects: document.querySelectorAll(SELECT).length,
+        }),
+        { RADIO, SELECT },
+      );
+      if (counts.radios === 0 && counts.selects === 0) {
+        return { ok: true, detail: 'producto de variante única (no hay opciones que elegir)' };
+      }
+      // Id de variante actual (input oculto [name="id"] del form, o el ?variant= de la URL).
+      const variantId = () =>
+        page.evaluate(
+          () =>
+            (document.querySelector('form[action*="/cart/add"] [name="id"]') as HTMLInputElement | null)?.value ||
+            new URL(location.href).searchParams.get('variant') ||
+            '',
+        );
+      const idBefore = await variantId();
+      let picked = '';
+      if (counts.radios > 0) {
+        const radios = page.locator(RADIO);
+        const n = await radios.count();
+        for (let i = 0; i < n; i++) {
+          const r = radios.nth(i);
+          if (await r.isDisabled().catch(() => false)) continue; // agotada / no seleccionable
+          if (await r.isChecked().catch(() => false)) continue; // ya era la marcada
+          await r.click({ timeout: 2500, force: true }).catch(() => undefined);
+          picked = (await r.getAttribute('value')) || 'opción';
+          break;
+        }
+      } else {
+        const sel = page.locator(SELECT).first();
+        const opts = await sel.locator('option:not([disabled])').count();
+        if (opts > 1) {
+          await sel.selectOption({ index: 1 }).catch(() => undefined);
+          picked = 'opción de lista';
+        }
+      }
+      await page.waitForTimeout(1200); // deja que el tema actualice la variante seleccionada
+      const idAfter = await variantId();
+      const addBtn = await findAddToCart(page, store);
+      const addable = addBtn ? !(await addBtn.isDisabled().catch(() => false)) : false;
+      const changed = !!idAfter && idBefore !== idAfter;
+      const ok = changed || (!!picked && addable);
+      const detail = picked
+        ? `seleccionada ${picked}${changed ? ` · variante ${idBefore || '—'}→${idAfter || '—'}` : ''}${addable ? ' · comprable' : ''}`
+        : 'no se pudo seleccionar ninguna variante disponible';
+      return { ok, detail };
+    },
+  },
+  {
+    group: 'OTROS',
+    label: 'Páginas clave responden',
+    desc: 'Comprueba que la página de error 404, el carrito vacío y una búsqueda sin resultados se muestran con el tema (no una pantalla en blanco ni un 500).',
+    once: true,
+    chip: 'Plantillas',
+    run: async ({ page, store, disco }) => {
+      const pfx = disco.prefix;
+      const header = () => page.locator('header, [role="banner"], .header, .site-header').first().count();
+      const probe = async (name: string, url: string, want404: boolean) => {
+        try {
+          const resp = await nav(page, url);
+          await dismissPopups(page);
+          const status = resp?.status() ?? 0;
+          const hasHeader = (await header()) > 0;
+          const ok = want404 ? status === 404 && hasHeader : status < 400 && hasHeader;
+          return { name, ok, note: `HTTP ${status}${hasHeader ? ' · con tema' : ' · sin cabecera'}` };
+        } catch {
+          return { name, ok: false, note: 'error al cargar' };
+        }
+      };
+      const results = [
+        await probe('404', `${store.baseUrl}${pfx}/no-existe-smoke-test-404`, true),
+        await probe('carrito vacío', `${store.baseUrl}${pfx}/cart`, false),
+        await probe('búsqueda sin resultados', `${store.baseUrl}${pfx}/search?q=zzqxwk-smoke-no-result`, false),
+      ];
+      const bad = results.filter((r) => !r.ok);
+      const extra = results.map((r) => (r.ok ? '✓ ' : '✗ ') + r.name + ' · ' + r.note);
+      return {
+        ok: bad.length === 0,
+        detail: bad.length ? 'fallan: ' + bad.map((b) => b.name).join(', ') : 'todas correctas (404, carrito vacío, búsqueda sin resultados)',
+        extra,
+      };
+    },
+  },
+  {
+    group: 'HOME',
+    label: 'Regresión visual (home)',
+    desc: 'Compara la home con una referencia guardada y avisa si cambió mucho a nivel visual (informativo). La primera vez guarda la referencia; puedes reiniciarla en Ajustes tras un rediseño.',
+    once: true,
+    info: true,
+    chip: 'Visual',
+    run: async ({ page, store }) => {
+      await nav(page, store.baseUrl);
+      await dismissPopups(page);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(700); // deja asentar banners/animaciones de entrada
+      const shot = await page.screenshot(); // viewport fijo 1366×900 (check `once` = escritorio)
+      const key = `baseline/${store.id}-home.png`;
+      const base = await storage.getImage(key).catch(() => null);
+      if (!base) {
+        await storage.putImage(key, shot);
+        return { ok: true, detail: 'referencia guardada (primera vez) — nada que comparar todavía' };
+      }
+      try {
+        const a = PNG.sync.read(base);
+        const b = PNG.sync.read(shot);
+        if (a.width !== b.width || a.height !== b.height) {
+          await storage.putImage(key, shot);
+          return { ok: true, detail: `tamaño distinto (${a.width}×${a.height} → ${b.width}×${b.height}) · referencia actualizada` };
+        }
+        const diff = pixelmatch(a.data, b.data, null, a.width, a.height, { threshold: 0.1 });
+        const pct = (diff / (a.width * a.height)) * 100;
+        const changed = pct >= 3; // umbral: por debajo es ruido (lazy-load, banners rotativos)
+        return {
+          ok: true,
+          detail: `${pct.toFixed(1)}% de píxeles distintos a la referencia${changed ? ' — REVISAR (posible cambio visual)' : ' — sin cambios notables'}`,
+        };
+      } catch (e) {
+        return { ok: true, detail: 'no se pudo comparar: ' + (e instanceof Error ? e.message : String(e)) };
+      }
     },
   },
   {
