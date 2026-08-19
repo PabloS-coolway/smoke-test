@@ -122,7 +122,7 @@
       .store { font-family: var(--font-display); font-weight: 600; font-size: 17px; }
       .store .url { font-family: var(--font-mono); font-size: 12px; color: var(--faint); font-weight: 400; margin-left: var(--sp-2); }
       .verdict { font-family: var(--font-display); font-weight: 700; font-size: 13px; padding: 6px 12px; border-radius: 999px; white-space: nowrap; }
-      .verdict.ok { color: var(--ok); background: var(--ok-bg); } .verdict.fail { color: var(--fail); background: var(--fail-bg); } .verdict.run { color: var(--accent); background: var(--panel-2); }
+      .verdict.ok { color: var(--ok); background: var(--ok-bg); } .verdict.fail { color: var(--fail); background: var(--fail-bg); } .verdict.run { color: var(--accent); background: var(--panel-2); } .verdict.none { color: var(--faint); background: var(--panel-2); }
       .when { color: var(--faint); font-size: 12.5px; margin-top: var(--sp-1); font-variant-numeric: tabular-nums; }
       .grp { margin-top: var(--sp-4); } .grp h4 { font-family: var(--font-display); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint); margin: 0 0 var(--sp-1); font-weight: 600; }
       .item { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: 1px solid var(--line); }
@@ -397,8 +397,8 @@
           const raw = card.dataset[key] || card.dataset.call || '0/0/0';
           const [pass, tot, ok] = raw.split('/');
           const v = card.querySelector('.verdict');
-          if (!v || v.classList.contains('run')) return;
-          if (tot === '0') { v.className = 'verdict run'; v.textContent = 'sin datos en esta vista'; return; }
+          if (!v || v.querySelector('.spin')) return; // no tocar la tarjeta «Probando…»
+          if (tot === '0') { v.className = 'verdict none'; v.textContent = 'sin datos en esta vista'; return; }
           v.className = 'verdict ' + (ok === '1' ? 'ok' : 'fail');
           v.textContent = (ok === '1' ? 'TODO OK' : 'HAY FALLOS') + ' · ' + pass + '/' + tot;
         });
@@ -492,7 +492,7 @@
         const vp = curVp();
         const [cp, ct, cok] = (vp === 'm' ? cm : vp === 'all' ? call : cd).split('/');
         const verdict = ct === '0'
-          ? '<span class="verdict run">sin datos en esta vista</span>'
+          ? '<span class="verdict none">sin datos en esta vista</span>'
           : '<span class="verdict ' + (cok === '1' ? 'ok' : 'fail') + '">' + (cok === '1' ? 'TODO OK' : 'HAY FALLOS') + ' · ' + cp + '/' + ct + '</span>';
 
         let h = '<div class="card" data-cd="' + cd + '" data-cm="' + cm + '" data-call="' + call + '"><div class="rhead"><div class="store">' + d.storeName + '<span class="url">' + d.baseUrl.replace(/^https?:\/\//, '') + '</span></div>' + verdict + '</div><div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s' + blk + perf + '</div>';
