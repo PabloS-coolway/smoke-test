@@ -122,7 +122,8 @@ app.get('/api/overview', requireAuth, async (_req, res) => {
     let perf = null as null | { ttfbMs: number; loadMs: number };
     let runId: string | null = null;
     const failing: Fail[] = [];
-    if (lastComplete) {
+    if (lastComplete && lastComplete.total > 0) {
+      // total 0 = ningún check contó (p. ej. todo ámbar por bloqueo anti-bot): no es un OK honesto.
       verdict = lastComplete.ok ? 'ok' : 'fail';
       passed = lastComplete.passed;
       total = lastComplete.total;
