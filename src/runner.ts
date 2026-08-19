@@ -294,6 +294,22 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
       if (msg && !IGNORE_JS.some((s) => msg.includes(s))) jsErrors.push(msg);
     });
 
+    // Recursos del tema que fallan (CSS/JS/imágenes/fuentes) — solo del propio store + CDN de Shopify
+    // (ignoramos terceros/trackers, que fallan a menudo y no son culpa del deploy).
+    const failedRes: string[] = [];
+    const relevant = (u: string) => u.startsWith(store.baseUrl) || u.includes('cdn.shopify.com');
+    const kinds = ['stylesheet', 'script', 'image', 'font', 'document'];
+    page.on('response', (r) => {
+      if (r.status() >= 400 && kinds.includes(r.request().resourceType()) && relevant(r.url())) {
+        failedRes.push(`${r.status()} · ${r.request().resourceType()} · ${r.url().split('?')[0].replace(store.baseUrl, '')}`);
+      }
+    });
+    page.on('requestfailed', (req) => {
+      if (kinds.includes(req.resourceType()) && relevant(req.url())) {
+        failedRes.push(`— · ${req.resourceType()} · ${req.url().split('?')[0].replace(store.baseUrl, '')}`);
+      }
+    });
+
     // Rendimiento de la home: EN FRÍO (primera navegación del contexto) y solo en escritorio.
     if (vp.id === 'desktop' && (!blocks || !blocks.length || blocks.includes('HOME'))) {
       perf = await measurePerf(page, store);
@@ -374,6 +390,20 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
       viewport: vp.name,
       ok: jsErrors.length === 0,
       detail: jsErrors.length ? `${jsErrors.length}: ${jsErrors.slice(0, 3).join(' | ')}` : 'ninguno',
+      shot: null,
+      level: 'info',
+    });
+
+    // Informativo por vista: recursos del tema (CSS/JS/imágenes) que fallaron al cargar.
+    const failedUnique = [...new Set(failedRes)];
+    vpItems.push({
+      group: 'OTROS',
+      label: 'Recursos de la tienda',
+      desc: 'Recursos propios del tema (CSS, JS, imágenes, fuentes) que no cargaron (404/error). Informativo.',
+      viewport: vp.name,
+      ok: failedUnique.length === 0,
+      detail: failedUnique.length ? `${failedUnique.length} recurso(s) fallaron` : 'todos cargaron',
+      extra: failedUnique.length ? failedUnique.slice(0, 30) : undefined,
       shot: null,
       level: 'info',
     });

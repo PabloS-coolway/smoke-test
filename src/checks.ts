@@ -601,6 +601,72 @@ export const checks: Check[] = [
   },
   {
     group: 'OTROS',
+    label: 'SEO básico',
+    desc: 'Comprueba que la home tiene title, meta description y canonical, y que la ficha lleva datos estructurados (JSON-LD de producto).',
+    once: true,
+    chip: 'SEO',
+    run: async ({ page, store, disco }) => {
+      await nav(page, store.baseUrl);
+      await dismissPopups(page);
+      const home = await page.evaluate(() => ({
+        title: (document.title || '').trim().length > 0,
+        desc: !!document.querySelector('meta[name="description"]')?.getAttribute('content'),
+        canonical: !!document.querySelector('link[rel="canonical"]'),
+        og: !!document.querySelector('meta[property="og:title"], meta[property="og:image"]'),
+      }));
+      let jsonld = false;
+      if (disco.productUrl) {
+        await nav(page, disco.productUrl);
+        await dismissPopups(page);
+        jsonld = await page.evaluate(() =>
+          Array.from(document.querySelectorAll('script[type="application/ld+json"]')).some((s) => /"@type"\s*:\s*"Product"/i.test(s.textContent || '')),
+        );
+      }
+      const extra = [
+        (home.title ? '✓' : '✗') + ' title',
+        (home.desc ? '✓' : '✗') + ' meta description',
+        (home.canonical ? '✓' : '✗') + ' canonical',
+        (home.og ? '✓' : '✗') + ' Open Graph',
+        (jsonld ? '✓' : '✗') + ' JSON-LD de producto (ficha)',
+      ];
+      const missing: string[] = [];
+      if (!home.title) missing.push('title');
+      if (!home.desc) missing.push('meta description');
+      if (!home.canonical) missing.push('canonical');
+      const ok = home.title && home.desc && home.canonical;
+      return { ok, detail: ok ? 'title, meta y canonical OK' : 'falta: ' + missing.join(', '), extra };
+    },
+  },
+  {
+    group: 'OTROS',
+    label: 'Analítica y píxeles',
+    desc: 'Comprueba que la home carga las herramientas de medición (Google, Meta Pixel, Klaviyo…). Un deploy puede tirarlas y perderías tracking.',
+    once: true,
+    chip: 'Analytics',
+    run: async ({ page, store }) => {
+      await nav(page, store.baseUrl);
+      await dismissPopups(page);
+      await page.waitForTimeout(1200); // deja que carguen los scripts de terceros
+      const list = await page.evaluate(() => {
+        const html = document.documentElement.innerHTML;
+        const out: string[] = [];
+        if (/googletagmanager\.com|google-analytics\.com|gtag\/js|\banalytics\.js\b/.test(html)) out.push('Google (GA/GTM)');
+        if (/connect\.facebook\.net|fbevents\.js|fbq\(/.test(html)) out.push('Meta Pixel');
+        if (/klaviyo/i.test(html)) out.push('Klaviyo');
+        if (/analytics\.tiktok|tiktokcdn/.test(html)) out.push('TikTok');
+        if (/static\.hotjar|hotjar\.com/.test(html)) out.push('Hotjar');
+        if (/cdn\.shopify\.com\/shopifycloud\/(web-pixels|shopify-analytics)/.test(html)) out.push('Shopify');
+        return out;
+      });
+      return {
+        ok: list.length > 0,
+        detail: list.length ? 'detectados: ' + list.join(', ') : 'no se detectó ninguna herramienta de medición',
+        extra: list.length ? list.map((x) => '✓ ' + x) : undefined,
+      };
+    },
+  },
+  {
+    group: 'OTROS',
     label: 'Redirecciones correctas',
     desc: 'Comprueba que http lleva a https y muestra el mercado/idioma por región que aplica la tienda.',
     once: true,
