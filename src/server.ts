@@ -122,6 +122,7 @@ app.get('/api/overview', requireAuth, async (_req, res) => {
     let perf = null as null | { ttfbMs: number; loadMs: number };
     let runId: string | null = null;
     const failing: Fail[] = [];
+    const blocks: Record<string, 'ok' | 'fail'> = {}; // salud por bloque (para el heatmap de la Home)
     if (lastComplete && lastComplete.total > 0) {
       // total 0 = ningún check contó (p. ej. todo ámbar por bloqueo anti-bot): no es un OK honesto.
       verdict = lastComplete.ok ? 'ok' : 'fail';
@@ -129,14 +130,14 @@ app.get('/api/overview', requireAuth, async (_req, res) => {
       total = lastComplete.total;
       perf = lastComplete.perf ?? null;
       runId = lastComplete.runId;
-      if (!lastComplete.ok) {
-        const full = await getRun(lastComplete.runId);
-        for (const it of full?.items ?? []) {
-          if (it.level === 'check' && !it.ok) {
-            const f: Fail = { label: it.label, viewport: it.viewport ?? '', detail: it.detail, group: it.group };
-            failing.push(f);
-            topFailures.push({ store: s.name, storeId: s.id, runId: lastComplete.runId, ...f });
-          }
+      const full = await getRun(lastComplete.runId);
+      for (const it of full?.items ?? []) {
+        if (it.level !== 'check') continue;
+        if (blocks[it.group] !== 'fail') blocks[it.group] = it.ok ? 'ok' : 'fail';
+        if (!it.ok) {
+          const f: Fail = { label: it.label, viewport: it.viewport ?? '', detail: it.detail, group: it.group };
+          failing.push(f);
+          topFailures.push({ store: s.name, storeId: s.id, runId: lastComplete.runId, ...f });
         }
       }
     }
@@ -154,6 +155,7 @@ app.get('/api/overview', requireAuth, async (_req, res) => {
       lastAt: last ? last.startedAt : null,
       lastCompleteAt: lastComplete ? lastComplete.startedAt : null,
       failing,
+      blocks,
       stale: ageDays > STALE_DAYS,
       signatureDaysLeft: daysLeft,
     });
