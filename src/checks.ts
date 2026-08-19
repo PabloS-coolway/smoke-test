@@ -37,7 +37,7 @@ export interface Check {
   info?: boolean;
   /** Si se define, este check aparece como un CHIP propio en «¿qué quieres probar?» (correr solo él). */
   chip?: string;
-  run: (c: CheckCtx) => Promise<{ ok: boolean; detail: string }>;
+  run: (c: CheckCtx) => Promise<{ ok: boolean; detail: string; extra?: string[] }>;
 }
 
 const GOTO = { timeout: 30000, waitUntil: 'domcontentloaded' as const };
@@ -512,28 +512,35 @@ export const checks: Check[] = [
             .map((a) => (a as HTMLAnchorElement).href)
             .filter((h) => h.startsWith(origin) && !skip.test(h));
           const unique = Array.from(new Set(hrefs)).slice(0, maxLinks);
-          const broken: string[] = []; // roto de verdad: 404/410/5xx
-          const limited: string[] = []; // 429/403: la tienda nos limitó, NO es un enlace roto
+          const all: Array<{ p: string; status: number }> = [];
           for (const u of unique) {
+            let status = 0;
             try {
               const resp = await fetch(u, { method: 'HEAD', redirect: 'follow' });
-              const p = u.replace(origin, '');
-              if (resp.status === 404 || resp.status === 410 || resp.status >= 500) broken.push(p + ' (' + resp.status + ')');
-              else if (resp.status === 429 || resp.status === 403) limited.push(p + ' (' + resp.status + ')');
+              status = resp.status;
             } catch {
-              /* fallo de red puntual: no lo contamos */
+              status = 0; // fallo de red puntual
             }
+            all.push({ p: u.replace(origin, ''), status });
             await new Promise((res) => setTimeout(res, gapMs));
           }
-          return { checked: unique.length, broken, limited };
+          return { all };
         },
         { gapMs, maxLinks },
       );
-      const ok = r.broken.length === 0;
-      let detail = `${r.checked} revisados · ${r.broken.length} roto(s)`;
-      if (r.broken.length) detail += ': ' + r.broken.slice(0, 3).join(', ');
-      if (r.limited.length) detail += ` · ${r.limited.length} no verificable(s) (la tienda limitó, no rotos)`;
-      return { ok, detail };
+      const isBroken = (s: number) => s === 404 || s === 410 || s >= 500;
+      const isLimited = (s: number) => s === 429 || s === 403;
+      const broken = r.all.filter((x) => isBroken(x.status));
+      const limited = r.all.filter((x) => isLimited(x.status));
+      let detail = `${r.all.length} revisados · ${broken.length} roto(s)`;
+      if (broken.length) detail += ': ' + broken.slice(0, 3).map((x) => x.p + ' (' + x.status + ')').join(', ');
+      if (limited.length) detail += ` · ${limited.length} no verificable(s) (la tienda limitó, no rotos)`;
+      // Detalle desplegable: todos los enlaces revisados con su estado (roto / limitado / ok).
+      const extra = r.all.map((x) => {
+        const tag = isBroken(x.status) ? '✗ ROTO' : isLimited(x.status) ? '— limitado' : x.status === 0 ? '— sin respuesta' : '✓';
+        return `${tag} · ${x.status || '—'} · ${x.p || '/'}`;
+      });
+      return { ok: broken.length === 0, detail, extra };
     },
   },
   {

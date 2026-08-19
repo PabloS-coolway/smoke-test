@@ -13,6 +13,8 @@ export interface ResultItem {
   viewport?: string;
   ok: boolean;
   detail: string;
+  /** Líneas de detalle desplegable (p. ej. la lista de enlaces revisados con su estado). */
+  extra?: string[];
   shot: string | null; // ruta relativa a /runs, para servir la captura
   /** `check` cuenta para el veredicto; `info` es informativo (p. ej. errores JS) y no lo pinta rojo. */
   level: 'check' | 'info';
@@ -290,10 +292,12 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
       const jsBefore = jsErrors.length; // para detectar challenge SOLO durante este check
       let ok = false;
       let detail = '';
+      let extra: string[] | undefined;
       try {
         const r = await check.run({ page, store, disco: disco_, mobile: vp.mobile });
         ok = r.ok;
         detail = r.detail;
+        extra = r.extra;
       } catch (e) {
         ok = false;
         detail = `error: ${e instanceof Error ? e.message : String(e)}`;
@@ -318,7 +322,7 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
       } catch {
         /* sin captura */
       }
-      return { group: check.group, label: check.label, desc: check.desc, viewport: vp.name, ok, detail, shot, level };
+      return { group: check.group, label: check.label, desc: check.desc, viewport: vp.name, ok, detail, extra, shot, level };
     };
 
     // En móvil se saltan los checks `once` (no dependen de la vista: enlaces rotos, redirects, stock…).
