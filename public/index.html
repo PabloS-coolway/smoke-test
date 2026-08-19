@@ -114,6 +114,17 @@
       .score { font-family: var(--font-mono); font-weight: 600; } .num { font-variant-numeric: tabular-nums; color: var(--muted); }
       .empty { color: var(--muted); font-size: 14px; padding: var(--sp-5); text-align: center; }
 
+      /* Comparativa entre tiendas */
+      .cmptable { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+      .cmptable th { text-align: center; font-family: var(--font-display); font-size: 12px; font-weight: 600; color: var(--ink); padding: var(--sp-3) var(--sp-3); border-bottom: 1px solid var(--line); background: var(--panel-2); }
+      .cmptable th:first-child { text-align: left; }
+      .cmp-sub { font-family: var(--font-body); font-size: 11px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+      .cmptable td { padding: 9px var(--sp-3); border-top: 1px solid var(--line); text-align: center; font-size: 14px; font-weight: 700; }
+      .cmp-lbl { text-align: left !important; font-weight: 500 !important; font-size: 13.5px; color: var(--ink); }
+      .cmp-ok { color: var(--ok); } .cmp-fail { color: var(--fail); } .cmp-na { color: var(--faint); font-weight: 400; }
+      .cmptable tr.cmp-diff td { background: var(--fail-bg); }
+      .cmptable tr.cmp-diff .cmp-lbl { font-weight: 700 !important; }
+
       /* Tarjeta de resultado (compartida) */
       .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-5); margin-top: var(--sp-4); animation: rise 240ms var(--ease-out); }
       @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -208,6 +219,7 @@
         <nav class="nav">
           <button class="nav-item active" data-view="lanzar"><span class="n-ico"></span>Lanzar validación</button>
           <button class="nav-item" data-view="resultados"><span class="n-ico"></span>Resultados</button>
+          <button class="nav-item" data-view="comparativa"><span class="n-ico"></span>Comparativa</button>
           <button class="nav-item" data-view="historial"><span class="n-ico"></span>Historial<span class="n-count" id="histCount"></span></button>
         </nav>
         <button id="logout" class="logout" style="display:none">Cerrar sesión</button>
@@ -250,6 +262,13 @@
             </div>
             <div id="results" data-vp="d"></div>
             <div class="res-empty" id="resEmpty">Aún no hay resultados. Lanza una validación desde «Lanzar validación».</div>
+          </section>
+
+          <!-- Vista: Comparativa -->
+          <section class="view" data-view="comparativa">
+            <h1>Comparativa entre tiendas</h1>
+            <p class="lead">La última validación completa de cada tienda, lado a lado. Las filas donde las tiendas <b>no coinciden</b> se resaltan.</p>
+            <div id="compareTable"></div>
           </section>
 
           <!-- Vista: Historial -->
@@ -403,6 +422,31 @@
         document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === v));
         document.querySelectorAll('.view').forEach((s) => s.classList.toggle('active', s.dataset.view === v));
         if (v === 'historial') loadHistory();
+        if (v === 'comparativa') loadCompare();
+      }
+
+      async function loadCompare() {
+        const box = $('#compareTable');
+        const d = await fetch('/api/compare').then((r) => (r.ok ? r.json() : { stores: [] })).catch(() => ({ stores: [] }));
+        const st = d.stores || [];
+        if (!st.length) { box.innerHTML = '<div class="empty">No hay validaciones completas todavía. Lanza «Todo» en cada tienda para comparar.</div>'; return; }
+        const labels = []; const seen = new Set();
+        for (const s of st) for (const l of Object.keys(s.checks)) if (!seen.has(l)) { seen.add(l); labels.push(l); }
+        const head = '<th>Comprobación</th>' + st.map((s) =>
+          '<th>' + esc(s.store) + '<div class="cmp-sub"><span class="score">' + s.passed + '/' + s.total + '</span>' + (s.perf ? ' · ' + (s.perf.loadMs / 1000).toFixed(1) + 's' : '') + '</div></th>').join('');
+        const rows = labels.map((l) => {
+          const states = st.map((s) => {
+            const c = s.checks[l];
+            if (!c) return null;
+            const vals = [c.d, c.m, c.g].filter((v) => v !== undefined);
+            return vals.some((v) => v === false) ? false : true;
+          });
+          const present = states.filter((x) => x !== null);
+          const diff = present.length > 1 && !present.every((x) => x === present[0]);
+          const cells = states.map((x) => x === null ? '<td class="cmp-na">—</td>' : x ? '<td class="cmp-ok">✓</td>' : '<td class="cmp-fail">✗</td>').join('');
+          return '<tr class="' + (diff ? 'cmp-diff' : '') + '"><td class="cmp-lbl">' + esc(l) + '</td>' + cells + '</tr>';
+        }).join('');
+        box.innerHTML = '<table class="cmptable"><thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table>';
       }
 
       function showResults() { $('#resEmpty').style.display = 'none'; setView('resultados'); }

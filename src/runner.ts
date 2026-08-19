@@ -58,6 +58,8 @@ export interface RunSummary {
   ok: boolean;
   /** Rendimiento de la home (para ver la evolución en el histórico). */
   perf?: Perf;
+  /** Bloques ejecutados (para distinguir corridas completas de parciales). */
+  blocks?: string[];
 }
 
 /** Historial completo (más reciente primero). */
@@ -408,6 +410,7 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
     total,
     ok: result.ok,
     perf: perf ?? undefined,
+    blocks: blocks && blocks.length ? blocks : undefined,
   });
   return result;
 }

@@ -60,6 +60,37 @@ app.get('/api/history', requireAuth, async (_req, res) => {
   res.json(await history());
 });
 
+/** Comparativa entre tiendas: la última corrida COMPLETA de cada tienda, con el estado por check. */
+app.get('/api/compare', requireAuth, async (_req, res) => {
+  const hist = await history(); // más reciente primero
+  const seen = new Set<string>();
+  const out: unknown[] = [];
+  for (const h of hist) {
+    if (seen.has(h.store)) continue;
+    if (h.blocks && h.blocks.length) continue; // solo corridas completas (todos los bloques)
+    seen.add(h.store);
+    const full = await getRun(h.runId);
+    if (!full) continue;
+    const cks: Record<string, { d?: boolean; m?: boolean; g?: boolean }> = {};
+    for (const it of full.items) {
+      if (it.level !== 'check') continue;
+      const vp = it.viewport === 'Móvil' ? 'm' : it.viewport === 'General' ? 'g' : 'd';
+      (cks[it.label] ||= {})[vp] = it.ok;
+    }
+    out.push({
+      store: full.storeName,
+      runId: full.runId,
+      startedAt: full.startedAt,
+      passed: full.passed,
+      total: full.total,
+      ok: full.ok,
+      perf: full.perf ?? null,
+      checks: cks,
+    });
+  }
+  res.json({ stores: out });
+});
+
 /** Avisos: firmas Web Bot Auth próximas a caducar (el `expires` va en el propio Signature-Input). */
 app.get('/api/warnings', requireAuth, (_req, res) => {
   const nowS = Date.now() / 1000;
