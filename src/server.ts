@@ -109,12 +109,14 @@ app.get('/api/warnings', requireAuth, (_req, res) => {
   res.json({ warnings });
 });
 
-/** Centro de notificaciones: firmas (todas, con días) + últimas corridas fallidas. `count` = las que piden atención. */
+/** Centro de notificaciones: firmas + corridas fallidas recientes. `count` = las NUEVAS (sin ver). */
 app.get('/api/notifications', requireAuth, async (_req, res) => {
   const nowS = Date.now() / 1000;
+  const cfg = await getConfig();
+  const seenAt = cfg.alertsSeenAt || 0;
   const items: Array<Record<string, unknown>> = [];
   let count = 0;
-  // Firmas Web Bot Auth: estado de cada una.
+  // Firmas Web Bot Auth: estado de cada una (las que caducan en ≤21 días piden atención).
   for (const s of stores()) {
     if (!s.sigInput) continue;
     const m = s.sigInput.match(/expires=(\d+)/);
@@ -124,18 +126,20 @@ app.get('/api/notifications', requireAuth, async (_req, res) => {
     if (attention) count++;
     items.push({ kind: 'signature', store: s.name, daysLeft, expiresAt: Number(m[1]) * 1000, attention });
   }
-  // Última corrida de cada tienda: si falló, es un aviso.
+  // Corridas fallidas recientes (alerta en el propio panel, no solo Slack). Las nuevas suben el badge.
   const hist = await history();
-  const seen = new Set<string>();
-  for (const h of hist) {
-    if (seen.has(h.store)) continue;
-    seen.add(h.store);
-    if (!h.ok) {
-      count++;
-      items.push({ kind: 'failure', store: h.storeName, runId: h.runId, passed: h.passed, total: h.total, startedAt: h.startedAt, attention: true });
-    }
+  for (const h of hist.filter((x) => !x.ok).slice(0, 20)) {
+    const isNew = new Date(h.startedAt).getTime() > seenAt;
+    if (isNew) count++;
+    items.push({ kind: 'failure', store: h.storeName, runId: h.runId, passed: h.passed, total: h.total, startedAt: h.startedAt, isNew });
   }
   res.json({ count, items });
+});
+
+/** Marca las alertas como vistas (limpia el badge). */
+app.post('/api/notifications/seen', requireAuth, async (_req, res) => {
+  await setConfig({ alertsSeenAt: Date.now() });
+  res.json({ ok: true });
 });
 
 /** Config administrable (programación de corridas). */
@@ -145,11 +149,12 @@ app.get('/api/config', requireAuth, async (_req, res) => {
 });
 
 app.post('/api/config', requireAuth, async (req, res) => {
-  const b = (req.body ?? {}) as Partial<{ scheduleEnabled: boolean; scheduleTimes: string[]; scheduleDays: string }>;
+  const b = (req.body ?? {}) as Partial<{ scheduleEnabled: boolean; scheduleTimes: string[]; scheduleDays: string; scheduleBlocks: string[] }>;
   const patch: Record<string, unknown> = {};
   if (typeof b.scheduleEnabled === 'boolean') patch.scheduleEnabled = b.scheduleEnabled;
   if (Array.isArray(b.scheduleTimes)) patch.scheduleTimes = b.scheduleTimes;
   if (b.scheduleDays === 'daily' || b.scheduleDays === 'weekdays') patch.scheduleDays = b.scheduleDays;
+  if (Array.isArray(b.scheduleBlocks)) patch.scheduleBlocks = b.scheduleBlocks.filter((x) => SELECTORS.includes(x));
   const cfg = await setConfig(patch);
   await reloadSchedule(); // reprograma en caliente
   res.json({ ...cfg, summary: scheduleSummary(cfg), alertsOn: !!process.env.SLACK_WEBHOOK_URL });

@@ -72,6 +72,9 @@
       .sched-foot { display: flex; align-items: center; gap: var(--sp-3); }
       .sched-status { font-size: 13px; color: var(--muted); }
       .sched-note { font-size: 12.5px; color: var(--faint); margin: var(--sp-3) 0 0; }
+      .sched-lbl { display: block; font-size: 12.5px; color: var(--muted); font-weight: 600; margin-bottom: var(--sp-2); }
+      .sched-hint { font-size: 12px; color: var(--faint); margin: var(--sp-2) 0 0; }
+      .ntag { font-size: 10px; font-weight: 700; color: #fff; background: var(--fail); border-radius: 999px; padding: 1px 6px; vertical-align: 1px; }
       button:focus-visible, .nav-item:focus-visible, .hrow:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
       h1 { font-family: var(--font-display); font-weight: 700; font-size: 26px; letter-spacing: -0.01em; margin: 0 0 var(--sp-2); }
@@ -315,6 +318,9 @@
                 </label>
                 <label>Horas <input id="schTimes" type="text" placeholder="08:00, 20:00" /></label>
               </div>
+              <label class="sched-lbl">Qué probar</label>
+              <div class="blockseg" id="schBlocks"></div>
+              <p class="sched-hint">Sin seleccionar nada = <b>todo</b>. Elige bloques o tests concretos para correr solo esos.</p>
               <div class="sched-foot">
                 <button class="btn" id="schSave">Guardar</button>
                 <span class="sched-status" id="schStatus"></span>
@@ -337,7 +343,9 @@
       const $ = (s) => document.querySelector(s);
       let STORES = [];
       let BLOCKS = [];
+      let CHIPS = [];
       let selectedBlock = null; // null = Todo; o un bloque concreto
+      const schedSel = new Set(); // bloques/tests elegidos para la programación
 
       // Arranque: decide si mostrar el login o la app según la sesión.
       async function init() {
@@ -371,7 +379,7 @@
         if (cfg.needsPassword) $('#logout').style.display = 'block';
         STORES = cfg.stores;
         BLOCKS = cfg.blocks || [];
-        const CHIPS = cfg.chips || [];
+        CHIPS = cfg.chips || [];
 
         // Selector: Todo + un chip por bloque + chips de tests sueltos (single-select).
         const seg = $('#blockseg');
@@ -476,14 +484,14 @@
         document.querySelectorAll('.view').forEach((s) => s.classList.toggle('active', s.dataset.view === v));
         if (v === 'historial') loadHistory();
         if (v === 'comparativa') loadCompare();
-        if (v === 'ajustes') { loadNotifications(); loadConfig(); }
+        if (v === 'ajustes') { loadNotifications(true); loadConfig(); }
       }
 
-      async function loadNotifications() {
+      async function loadNotifications(markSeen) {
         const d = await fetch('/api/notifications').then((r) => (r.ok ? r.json() : { count: 0, items: [] })).catch(() => ({ count: 0, items: [] }));
         $('#notifCount').textContent = d.count ? String(d.count) : '';
         const box = $('#notifList');
-        if (!box) return;
+        if (!box || !markSeen) return;
         if (!d.items || !d.items.length) { box.innerHTML = '<div class="empty">Sin notificaciones. Todo en orden. 🎉</div>'; return; }
         box.innerHTML = d.items.map((n) => {
           if (n.kind === 'signature') {
@@ -497,8 +505,12 @@
             return '<div class="notif ' + cls + '"><div class="ni">' + sym + '</div><div class="nt"><b>Firma de ' + esc(n.store) + '</b><div class="nd">La firma Web Bot Auth ' + txt + '</div></div></div>';
           }
           const when = new Date(n.startedAt).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-          return '<div class="notif fail"><div class="ni">✗</div><div class="nt"><b>' + esc(n.store) + ' falló</b><div class="nd">Última validación ' + n.passed + '/' + n.total + ' · ' + when + '</div></div><a class="nlink" href="#" onclick="showRun(\'' + n.runId + '\'); return false">ver</a></div>';
+          const nuevo = n.isNew ? ' <span class="ntag">nuevo</span>' : '';
+          return '<div class="notif fail"><div class="ni">✗</div><div class="nt"><b>' + esc(n.store) + ' falló' + nuevo + '</b><div class="nd">Validación ' + n.passed + '/' + n.total + ' · ' + when + '</div></div><a class="nlink" href="#" onclick="showRun(\'' + n.runId + '\'); return false">ver</a></div>';
         }).join('');
+        // Al ver el panel, marca las alertas como vistas (limpia el badge).
+        fetch('/api/notifications/seen', { method: 'POST' }).catch(() => {});
+        $('#notifCount').textContent = '';
       }
 
       async function loadConfig() {
@@ -508,9 +520,22 @@
         $('#schDays').value = c.scheduleDays || 'daily';
         $('#schTimes').value = (c.scheduleTimes || []).join(', ');
         $('#schStatus').textContent = 'Estado: ' + (c.summary || '—');
-        $('#alertNote').innerHTML = c.alertsOn
-          ? '🔔 Alertas de fallo por Slack: <b>activas</b>.'
-          : 'Las alertas por Slack se activan poniendo <code>SLACK_WEBHOOK_URL</code> en la configuración del servidor.';
+        $('#alertNote').innerHTML = '🔔 Las alertas de fallo llegan siempre a este panel. ' + (c.alertsOn
+          ? 'Además, Slack: <b>activo</b>.'
+          : 'Para avisar también por Slack, define <code>SLACK_WEBHOOK_URL</code> en el servidor.');
+        // Chips de "qué probar" (multi-select). Vacío = todo.
+        schedSel.clear();
+        for (const b of c.scheduleBlocks || []) schedSel.add(b);
+        const seg = $('#schBlocks'); seg.innerHTML = '';
+        const mk = (label, value, cls) => {
+          const b = document.createElement('button');
+          b.className = 'blk ' + (cls || '') + (schedSel.has(value) ? ' active' : '');
+          b.textContent = label;
+          b.onclick = () => { if (schedSel.has(value)) schedSel.delete(value); else schedSel.add(value); b.classList.toggle('active'); };
+          return b;
+        };
+        for (const bl of BLOCKS) seg.appendChild(mk(bl, bl));
+        if (CHIPS.length) { const sep = document.createElement('span'); sep.className = 'blk-sep'; seg.appendChild(sep); for (const c2 of CHIPS) seg.appendChild(mk(c2.chip, c2.value, 'blk-test')); }
       }
 
       $('#schSave').addEventListener('click', async () => {
@@ -518,6 +543,7 @@
           scheduleEnabled: $('#schEnabled').checked,
           scheduleDays: $('#schDays').value,
           scheduleTimes: $('#schTimes').value.split(',').map((s) => s.trim()).filter(Boolean),
+          scheduleBlocks: Array.from(schedSel),
         };
         $('#schStatus').textContent = 'Guardando…';
         const r = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

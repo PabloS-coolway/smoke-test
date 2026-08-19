@@ -37,7 +37,8 @@ export function startScheduler(): void {
 export function scheduleSummary(cfg: AppConfig): string {
   if (!cfg.scheduleEnabled) return 'desactivadas';
   const dias = cfg.scheduleDays === 'weekdays' ? 'L-V' : 'todos los días';
-  return `${dias} a las ${cfg.scheduleTimes.join(' y ')} (${cfg.tz})`;
+  const que = cfg.scheduleBlocks && cfg.scheduleBlocks.length ? cfg.scheduleBlocks.join(', ') : 'todo';
+  return `${dias} a las ${cfg.scheduleTimes.join(' y ')} · ${que} (${cfg.tz})`;
 }
 
 let running = false;
@@ -45,6 +46,8 @@ async function runAllStores(): Promise<void> {
   if (running) return; // no solapar dos ciclos programados
   running = true;
   try {
+    const cfg = await getConfig();
+    const blocks = cfg.scheduleBlocks && cfg.scheduleBlocks.length ? cfg.scheduleBlocks : undefined;
     for (const store of stores()) {
       let waited = 0;
       while (isBusy() && waited < 24) {
@@ -52,7 +55,7 @@ async function runAllStores(): Promise<void> {
         waited++;
       }
       if (isBusy()) continue;
-      const runId = startRun(store);
+      const runId = startRun(store, blocks);
       await waitForJob(runId);
     }
   } finally {

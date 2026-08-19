@@ -8,7 +8,9 @@ export interface AppConfig {
   scheduleEnabled: boolean;
   scheduleTimes: string[]; // horas "HH:MM" a las que correr (una o varias)
   scheduleDays: 'daily' | 'weekdays'; // todos los días o solo L-V
+  scheduleBlocks: string[]; // QUÉ probar en las corridas programadas ([] = todo)
   tz: string; // zona horaria
+  alertsSeenAt: number; // timestamp: hasta cuándo se han "visto" las alertas del panel
 }
 
 const KEY = 'config.json';
@@ -17,7 +19,9 @@ const DEFAULT: AppConfig = {
   scheduleEnabled: false,
   scheduleTimes: ['08:00'],
   scheduleDays: 'daily',
+  scheduleBlocks: [],
   tz: (process.env.SCHEDULE_TZ ?? 'Europe/Madrid').trim() || 'Europe/Madrid',
+  alertsSeenAt: 0,
 };
 
 let cache: AppConfig | null = null;
@@ -39,6 +43,8 @@ export async function setConfig(patch: Partial<AppConfig>): Promise<AppConfig> {
     .slice(0, 6);
   if (!next.scheduleTimes.length) next.scheduleTimes = ['08:00'];
   if (next.scheduleDays !== 'weekdays') next.scheduleDays = 'daily';
+  next.scheduleBlocks = (next.scheduleBlocks || []).map((b) => String(b).trim()).filter(Boolean).slice(0, 20);
+  next.alertsSeenAt = Number(next.alertsSeenAt) || 0;
   cache = next;
   await storage.putJson(KEY, next);
   return next;
