@@ -288,6 +288,26 @@
       .cmptable.heat tr.cmp-grp td { position: sticky; left: 0; background: var(--panel-2); font-family: var(--font-display); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); font-weight: 600; text-align: left; padding: 6px var(--sp-3); }
       .cmp-lg { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; vertical-align: -4px; }
 
+      /* Informe como tabla/heatmap (columnas = Escritorio / Móvil / General) */
+      .cmptable.heat td.hm.info { background: var(--panel-2); color: var(--faint); }
+      .cmptable.heat .hm-col { background: var(--panel-2); padding: 7px 6px; min-width: 72px; font-family: var(--font-display); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); font-weight: 600; }
+      .cmptable.rep .cmp-lbl { min-width: 200px; max-width: none; }
+      .cmptable.rep tr.rep-row { cursor: pointer; }
+      .cmptable.rep tr.rep-row:hover .cmp-lbl { background: var(--panel-2); }
+      .cmptable.rep tr.rep-row:hover td.hm { filter: brightness(0.97); }
+      .rep-caret { display: inline-block; width: 14px; color: var(--faint); font-size: 10px; }
+      .cmptable.rep tr.rep-detail { display: none; }
+      .cmptable.rep tr.rep-detail.open { display: table-row; }
+      .cmptable.rep tr.rep-detail > td { position: sticky; left: 0; background: var(--panel-2); padding: var(--sp-3) var(--sp-4); text-align: left; }
+      .rd-desc { font-size: 12.5px; color: var(--faint); margin-bottom: var(--sp-2); }
+      .rd-line { display: flex; align-items: flex-start; gap: var(--sp-3); padding: 5px 0; border-top: 1px solid var(--line); }
+      .rd-line:first-of-type { border-top: 0; }
+      .rd-vp { flex: none; width: 96px; font-size: 12px; font-weight: 600; }
+      .rd-vp.ok { color: var(--ok); } .rd-vp.fail { color: var(--fail); } .rd-vp.info { color: var(--faint); }
+      .rd-body { flex: 1; min-width: 0; }
+      .rd-det { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+      .rd-body .shot { margin-left: var(--sp-2); }
+
       /* Tarjeta de resultado (compartida) */
       .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: var(--sp-5); margin-top: var(--sp-4); animation: rise 240ms var(--ease-out); }
       @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -446,13 +466,8 @@
           <section class="view narrow" data-view="report">
             <div class="report-head">
               <button class="back" id="backBtn" onclick="backFromReport()">← Volver</button>
-              <div class="vpseg" id="vpseg">
-                <button class="vps active" data-vp="d">Escritorio</button>
-                <button class="vps" data-vp="m">Móvil</button>
-                <button class="vps" data-vp="all">Ambos</button>
-              </div>
             </div>
-            <div id="results" data-vp="d"></div>
+            <div id="results"></div>
           </section>
 
           <!-- Vista: Comparativa -->
@@ -588,10 +603,6 @@
         buildStoreUI(); // lista de «Lanzar en» + selector de tienda de la regresión visual
 
         document.querySelectorAll('.nav-item').forEach((n) => (n.onclick = () => setView(n.dataset.view)));
-        // Selector de vista fijo (Escritorio / Móvil / Ambos) sobre todo el área de resultados.
-        $('#vpseg').querySelectorAll('.vps').forEach((btn) => {
-          btn.onclick = () => applyViewport(btn.dataset.vp);
-        });
         loadHome(); // vista por defecto: Resumen
         loadHistory();
         syncBusy();
@@ -1103,50 +1114,76 @@
         return '<div class="card"><div class="rhead"><div class="store">' + esc(name) + '</div><span class="verdict fail">ERROR</span></div><div class="when">' + esc(msg) + '</div></div>';
       }
 
+      // El informe como MAPA DE CALOR (mismo estilo que la Comparativa): filas = comprobación
+      // (agrupadas por bloque), columnas = Escritorio / Móvil / General, celda = ✓/✗/ⓘ/—. Al pulsar una
+      // fila se despliega el detalle (por vista: texto, captura y listas «Ver detalle»).
       function card(d) {
-        const groups = {};
-        for (const it of d.items) (groups[it.group] ||= []).push(it);
+        const order = ['HOME', 'COLECCIONES', 'PDP', 'OTROS'];
+        const byLabel = {}; const labels = [];
+        for (const it of d.items) {
+          const k = it.viewport === 'Móvil' ? 'm' : it.viewport === 'General' ? 'g' : 'd';
+          if (!byLabel[it.label]) { byLabel[it.label] = { group: it.group, desc: it.desc, label: it.label }; labels.push(it.label); }
+          byLabel[it.label][k] = { ok: it.ok, detail: it.detail, extra: it.extra, shot: it.shot, level: it.level };
+        }
+        labels.sort((a, b) => (order.indexOf(byLabel[a].group) + 99) % 100 - (order.indexOf(byLabel[b].group) + 99) % 100);
+
         const when = new Date(d.startedAt).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
         const blk = d.blocks && d.blocks.length ? ' · solo ' + d.blocks.join(', ') : '';
         const perf = d.perf ? ' · carga ' + (d.perf.loadMs / 1000).toFixed(1) + ' s · TTFB ' + d.perf.ttfbMs + ' ms' : '';
+        const verdict = d.total === 0
+          ? '<span class="verdict none">sin datos</span>'
+          : '<span class="verdict ' + (d.ok ? 'ok' : 'fail') + '">' + (d.ok ? 'TODO OK' : 'HAY FALLOS') + ' · ' + d.passed + '/' + d.total + '</span>';
 
-        // Cuentas por vista (Escritorio/Móvil/Ambos) para que el badge cambie con el selector.
-        // Los checks "General" (enlaces rotos, redirects, stock) cuentan en cualquier vista.
-        const chk = d.items.filter((i) => i.level === 'check');
-        const grp = (i) => (i.viewport === 'Móvil' ? 'm' : i.viewport === 'General' ? 'g' : 'd');
-        const pack = (f) => {
-          const its = f === 'all' ? chk : chk.filter((i) => { const g = grp(i); return g === f || g === 'g'; });
-          const pass = its.filter((i) => i.ok).length;
-          return pass + '/' + its.length + '/' + (its.length && pass === its.length ? 1 : 0);
-        };
-        const cd = pack('d'), cm = pack('m'), call = pack('all');
-        const vp = curVp();
-        const [cp, ct, cok] = (vp === 'm' ? cm : vp === 'all' ? call : cd).split('/');
-        const verdict = ct === '0'
-          ? '<span class="verdict none">sin datos en esta vista</span>'
-          : '<span class="verdict ' + (cok === '1' ? 'ok' : 'fail') + '">' + (cok === '1' ? 'TODO OK' : 'HAY FALLOS') + ' · ' + cp + '/' + ct + '</span>';
+        const cellSym = (c) => c.level === 'info' ? 'ⓘ' : c.ok ? '✓' : '✗';
+        const cellCls = (c) => c.level === 'info' ? 'info' : c.ok ? 'ok' : 'fail';
+        const cell = (c) => c ? '<td class="hm ' + cellCls(c) + '" title="' + esc(c.detail) + '">' + cellSym(c) + '</td>' : '<td class="hm na">—</td>';
 
-        let h = '<div class="card" data-cd="' + cd + '" data-cm="' + cm + '" data-call="' + call + '"><div class="rhead"><div class="store">' + d.storeName + '<span class="url">' + d.baseUrl.replace(/^https?:\/\//, '') + '</span></div>' + verdict + '</div><div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s' + blk + perf + '</div>';
-        for (const [g, items] of Object.entries(groups)) {
-          h += '<div class="grp"><h4>' + g + '</h4>';
-          for (const it of items) {
-            const info = it.level === 'info';
-            const cls = info ? (it.ok ? 'info' : 'warn') : it.ok ? 'ok' : 'fail';
-            const sym = info ? (it.ok ? 'i' : '!') : it.ok ? '✓' : '✗';
-            const desc = it.desc ? '<div class="desc">' + it.desc + '</div>' : '';
-            const dv = it.viewport === 'Móvil' ? 'm' : it.viewport === 'General' ? 'g' : it.viewport === 'Escritorio' ? 'd' : '';
-            const vp = it.viewport ? '<span class="vp vp-' + (dv || 'd') + '">' + it.viewport + '</span>' : '';
-            let extra = '';
-            if (it.extra && it.extra.length) {
-              const lines = it.extra.map((e) => '<div class="exline' + (e.indexOf('✗') === 0 ? ' exbroken' : '') + '">' + esc(e) + '</div>').join('');
-              extra = '<button class="more" onclick="const x=this.nextElementSibling; x.classList.toggle(\'open\'); this.textContent = x.classList.contains(\'open\') ? \'Ocultar detalle\' : \'Ver detalle (' + it.extra.length + ')\'">Ver detalle (' + it.extra.length + ')</button><div class="extra">' + lines + '</div>';
-            }
-            h += '<div class="item" data-vp="' + dv + '"><div class="badge ' + cls + '">' + sym + '</div><div class="txt"><div class="lbl">' + it.label + vp + '</div>' + desc + '<div class="det">' + it.detail + '</div>' + extra + '</div>' + (it.shot ? '<a class="shot" href="/runs/' + it.shot + '" target="_blank">captura</a>' : '') + '</div>';
-          }
-          h += '</div>';
+        let rows = ''; let lastG = '';
+        for (const l of labels) {
+          const e = byLabel[l];
+          if (e.group !== lastG) { rows += '<tr class="cmp-grp"><td colspan="4">' + e.group + '</td></tr>'; lastG = e.group; }
+          const anyFail = ['d', 'm', 'g'].some((k) => e[k] && e[k].level !== 'info' && !e[k].ok);
+          rows += '<tr class="rep-row' + (anyFail ? ' rep-fail' : '') + '" onclick="toggleRep(this)">' +
+            '<td class="cmp-lbl"><span class="rep-caret">▸</span>' + esc(l) + '</td>' + cell(e.d) + cell(e.m) + cell(e.g) + '</tr>' +
+            '<tr class="rep-detail"><td colspan="4">' + repDetail(e) + '</td></tr>';
         }
-        return h + '</div>';
+        const table = '<div class="cmp-scroll"><table class="cmptable heat rep"><thead><tr>' +
+          '<th class="cmp-corner">Comprobación</th><th class="hm-col">Escritorio</th><th class="hm-col">Móvil</th><th class="hm-col">General</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+        return '<div class="card"><div class="rhead"><div class="store">' + esc(d.storeName) +
+          '<span class="url">' + esc(d.baseUrl.replace(/^https?:\/\//, '')) + '</span></div>' + verdict + '</div>' +
+          '<div class="when">' + when + ' · ' + (d.durationMs / 1000).toFixed(1) + ' s' + blk + perf + '</div>' +
+          table + '</div>';
       }
+
+      // Detalle desplegable de una fila del informe: una línea por vista con su símbolo, texto, captura
+      // y (si hay) la lista «Ver detalle» (enlaces revisados, recursos, etc.).
+      function repDetail(e) {
+        const desc = e.desc ? '<div class="rd-desc">' + esc(e.desc) + '</div>' : '';
+        const lines = [['d', 'Escritorio'], ['m', 'Móvil'], ['g', 'General']].filter(([k]) => e[k]).map(([k, lbl]) => {
+          const c = e[k];
+          const scls = c.level === 'info' ? 'info' : c.ok ? 'ok' : 'fail';
+          const sym = c.level === 'info' ? 'ⓘ' : c.ok ? '✓' : '✗';
+          const shot = c.shot ? '<a class="shot" href="/runs/' + c.shot + '" target="_blank">captura</a>' : '';
+          let extra = '';
+          if (c.extra && c.extra.length) {
+            const ex = c.extra.map((x) => '<div class="exline' + (x.indexOf('✗') === 0 ? ' exbroken' : '') + '">' + esc(x) + '</div>').join('');
+            extra = '<button class="more" onclick="event.stopPropagation(); const x=this.nextElementSibling; x.classList.toggle(\'open\'); this.textContent = x.classList.contains(\'open\') ? \'Ocultar detalle\' : \'Ver detalle (' + c.extra.length + ')\'">Ver detalle (' + c.extra.length + ')</button><div class="extra">' + ex + '</div>';
+          }
+          return '<div class="rd-line"><span class="rd-vp ' + scls + '">' + sym + ' ' + lbl + '</span>' +
+            '<div class="rd-body"><span class="rd-det">' + esc(c.detail) + '</span>' + shot + extra + '</div></div>';
+        }).join('');
+        return desc + lines;
+      }
+
+      function toggleRep(row) {
+        const det = row.nextElementSibling;
+        const open = det.classList.toggle('open');
+        const caret = row.querySelector('.rep-caret');
+        if (caret) caret.textContent = open ? '▾' : '▸';
+      }
+      window.toggleRep = toggleRep;
 
       let HIST = [];
       const HIST_STEP = 20; // cuántas filas añade «cargar más»
@@ -1268,7 +1305,6 @@
         if (!d) return;
         $('#results').innerHTML = card(d); // el informe abre en su propia pantalla
         openReport(backTo || 'historial');
-        applyViewport(curVp()); // deja el filtro de vista consistente
         closeBell();
       }
       window.showRun = showRun;
