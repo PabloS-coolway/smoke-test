@@ -2,6 +2,7 @@ import { chromium, devices } from 'playwright';
 import { checks, discover, isChallenged } from './checks';
 import type { Discovery } from './checks';
 import { storage } from './storage';
+import { notifyRun } from './notify';
 import type { StoreConfig } from './stores';
 
 export interface ResultItem {
@@ -134,6 +135,16 @@ export function jobStatus(runId: string): Job | null {
   return jobs.get(runId) ?? null;
 }
 
+/** Espera (sondeando) a que una corrida termine. Para encadenar corridas en el scheduler. */
+export async function waitForJob(runId: string, timeoutMs = 15 * 60 * 1000): Promise<void> {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    const j = jobs.get(runId);
+    if (!j || j.status !== 'running') return;
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+}
+
 /** Bloques de checks disponibles (para correr solo uno). */
 export const BLOCKS = ['HOME', 'COLECCIONES', 'PDP', 'OTROS'] as const;
 
@@ -158,8 +169,9 @@ export function startRun(store: StoreConfig, blocks?: string[]): string {
   };
   jobs.set(runId, job);
   void runStore(store, runId, blocks)
-    .then(() => {
+    .then((result) => {
       job.status = 'done';
+      void notifyRun(result); // avisa por Slack si falló (y hay webhook configurado)
     })
     .catch((e) => {
       job.status = 'error';

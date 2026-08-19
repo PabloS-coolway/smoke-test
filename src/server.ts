@@ -3,6 +3,7 @@ import express from 'express';
 import path from 'node:path';
 import { stores, storeById } from './stores';
 import { BLOCKS, CHIPS, SELECTORS, deleteRun, getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
+import { startScheduler } from './scheduler';
 import { storage } from './storage';
 import { authEnabled, clearSession, isAuthed, requireAuth, setSession, checkPassword } from './auth';
 
@@ -131,4 +132,6 @@ app.listen(PORT, () => {
   console.log(`Tiendas: ${list}`);
   console.log(`Historial: ${storage.describe()}`);
   console.log(`Login: ${authEnabled() ? 'activado' : 'desactivado (abierto)'}`);
+  console.log(`Alertas: ${process.env.SLACK_WEBHOOK_URL ? 'Slack (webhook)' : 'desactivadas'}`);
+  startScheduler();
 });
