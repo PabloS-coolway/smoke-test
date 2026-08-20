@@ -156,9 +156,21 @@ export function subscribeRun(runId: string, fn: (ev: ProgressEvent) => void): ()
   return () => { em?.off('ev', fn); };
 }
 
-/** La validación en curso ahora mismo, o null si no hay ninguna. */
+/** Tope de vida de una corrida: pasado esto se considera COLGADA (Chromium muerto en 1 GB, etc.) y se
+ *  libera el candado, para no bloquear TODAS las validaciones hasta un redeploy. Las reales van ~10 min. */
+const MAX_RUN_MS = 20 * 60 * 1000;
+
+/** La validación en curso ahora mismo, o null si no hay ninguna. Marca como error los jobs colgados. */
 export function runningJob(): Job | null {
-  for (const j of jobs.values()) if (j.status === 'running') return j;
+  for (const j of jobs.values()) {
+    if (j.status !== 'running') continue;
+    if (Date.now() - new Date(j.startedAt).getTime() > MAX_RUN_MS) {
+      j.status = 'error';
+      j.error = 'La validación superó el tiempo máximo (20 min) y se considera colgada.';
+      continue; // candado liberado: sigue buscando por si hubiera otra viva
+    }
+    return j;
+  }
   return null;
 }
 

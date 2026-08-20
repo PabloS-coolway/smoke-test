@@ -1185,21 +1185,35 @@
         });
       }
 
-      // Fallback: sondeo del estado (como antes). También lo usa el stream si se corta.
+      // Fallback / seguimiento por sondeo. RESILIENTE: sigue a la corrida mientras el servidor la dé por
+      // "running" (los «Todo» de EU tardan ~10 min por el tema pesado). Solo se rinde si el servidor
+      // reporta error, si pierde la corrida (reinicio) sin informe guardado, o tras un tope de 30 min.
       async function pollRun(id, runId) {
-        const deadline = Date.now() + 12 * 60 * 1000;
-        while (Date.now() < deadline) {
+        const now = document.querySelector('#live-' + id + ' .live-now');
+        if (now && !now.querySelector('.spin')) now.innerHTML = '<span class="spin"></span>En curso… (siguiendo por sondeo)';
+        const hardCap = Date.now() + 30 * 60 * 1000; // tope de seguridad
+        let unknowns = 0;
+        while (Date.now() < hardCap) {
           await sleep(3000);
           let st;
           try {
             const r = await fetch('/api/run/' + runId + '/status');
             if (r.status === 401) { showLogin(); throw new Error('Sesión caducada, vuelve a entrar.'); }
             st = await safeJson(r);
-          } catch { continue; }
+          } catch { continue; } // blip de red: reintenta
           if (st.status === 'done') { await loadReportInto(id, runId); return; }
           if (st.status === 'error') throw new Error(st.error || 'La validación falló durante la ejecución.');
+          if (st.status === 'unknown') {
+            // El servidor no conoce la corrida (se reinició el proceso). Quizá el informe ya esté guardado.
+            if (++unknowns >= 6) {
+              const r = await fetch('/api/run/' + runId);
+              if (r.ok) { replaceCard(id, card(await safeJson(r))); return; }
+              throw new Error('Se perdió el seguimiento de la corrida (se reinició el servidor). Si terminó, aparecerá en el Historial.');
+            }
+          } else { unknowns = 0; } // 'running' → seguir; el servidor sigue vivo y terminará
         }
-        throw new Error('La validación tardó demasiado (más de 6 min). Inténtalo de nuevo.');
+        // Tope de 30 min: la corrida sigue viva en el servidor; su informe caerá en el Historial.
+        throw new Error('La validación está tardando mucho pero sigue en el servidor; revísala en el Historial en unos minutos.');
       }
 
       const SHORT_VP = { Escritorio: 'Escr', 'Móvil': 'Móv', General: 'Gen' };
