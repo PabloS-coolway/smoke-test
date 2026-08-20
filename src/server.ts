@@ -3,7 +3,7 @@ import express from 'express';
 import path from 'node:path';
 import { stores, storeById, loadManagedStores, saveManagedStores, isManaged } from './stores';
 import type { StoreConfig, RawStore } from './stores';
-import { BLOCKS, CHIPS, SELECTORS, deleteRun, getRun, history, isBusy, jobStatus, runningJob, startRun } from './runner';
+import { BLOCKS, CHIPS, SELECTORS, deleteRun, getRun, history, isBusy, jobStatus, runLog, runningJob, startRun, subscribeRun } from './runner';
 import { reloadSchedule, scheduleSummary, startScheduler } from './scheduler';
 import { getConfig, setConfig } from './config';
 import { storage } from './storage';
@@ -324,6 +324,39 @@ app.get('/api/run/:runId/status', requireAuth, (req, res) => {
   const job = jobStatus(req.params.runId);
   if (!job) return res.json({ status: 'unknown' });
   return res.json({ status: job.status, error: job.error, storeName: job.storeName });
+});
+
+/**
+ * Progreso EN VIVO de una corrida por SSE: reproduce lo ya ocurrido y luego va empujando cada paso
+ * (qué vista y qué comprobación se ejecutan, con su ✓/✗). El cliente lo usa para el detalle en directo;
+ * si el proxy corta el stream, el cliente cae al sondeo de `/status`. Auth por cookie (EventSource no
+ * envía cabeceras personalizadas, pero sí la cookie de sesión al ser mismo origen).
+ */
+app.get('/api/run/:runId/events', requireAuth, (req, res) => {
+  const { runId } = req.params;
+  res.set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no', // que el proxy no bufferice el stream
+  });
+  res.flushHeaders?.();
+  const send = (ev: unknown, event?: string) => {
+    if (event) res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(ev)}\n\n`);
+  };
+  // 1) Reproduce lo ya ocurrido (para el que conecta a mitad de corrida).
+  for (const ev of runLog(runId)) send(ev, ev.phase);
+  const job = jobStatus(runId);
+  // 2) Si la corrida ya terminó (o no se conoce), cierra sin dejar el stream colgado.
+  if (!job || job.status !== 'running') { send({ status: job?.status ?? 'unknown' }, 'close'); return res.end(); }
+  // 3) En curso: suscríbete y empuja cada nuevo evento. Al terminar, cierra.
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 15000);
+  const unsub = subscribeRun(runId, (ev) => {
+    send(ev, ev.phase);
+    if (ev.phase === 'done' || ev.phase === 'error') { unsub(); clearInterval(heartbeat); res.end(); }
+  });
+  req.on('close', () => { unsub(); clearInterval(heartbeat); });
 });
 
 /** Informe completo de una ejecución pasada. */

@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { chromium, devices } from 'playwright';
 import { checks, discover, isChallenged } from './checks';
 import type { Discovery } from './checks';
@@ -111,6 +112,22 @@ const IGNORE_JS = [
  * no soporta dos en paralelo).
  */
 export type JobStatus = 'running' | 'done' | 'error';
+
+/** Un paso del progreso EN VIVO de una corrida (para el stream SSE / el sondeo enriquecido). */
+export interface ProgressEvent {
+  t: number; // timestamp
+  phase: 'running' | 'result' | 'viewport' | 'done' | 'error';
+  storeName: string;
+  viewport?: string; // Escritorio / Móvil
+  index?: number; // nº de check dentro de la vista (1..total)
+  total?: number; // total de checks en la vista
+  label?: string; // qué comprobación
+  ok?: boolean; // resultado (en phase 'result')
+  detail?: string;
+  level?: 'check' | 'info';
+  retry?: boolean; // es la 2ª pasada (reintento)
+}
+
 export interface Job {
   runId: string;
   store: string;
@@ -118,8 +135,26 @@ export interface Job {
   status: JobStatus;
   error?: string;
   startedAt: string;
+  /** Historial de eventos de progreso (para que un suscriptor tardío recupere lo ya ocurrido). */
+  log: ProgressEvent[];
 }
 const jobs = new Map<string, Job>();
+
+// Emisores de progreso por corrida: el endpoint SSE se suscribe para reenviar cada evento al navegador.
+const emitters = new Map<string, EventEmitter>();
+
+/** Eventos de progreso ya ocurridos en una corrida (para reproducirlos al conectar el stream). */
+export function runLog(runId: string): ProgressEvent[] {
+  return jobs.get(runId)?.log ?? [];
+}
+
+/** Suscribe un oyente a los eventos de progreso de una corrida. Devuelve la función para desuscribir. */
+export function subscribeRun(runId: string, fn: (ev: ProgressEvent) => void): () => void {
+  let em = emitters.get(runId);
+  if (!em) { em = new EventEmitter(); em.setMaxListeners(0); emitters.set(runId, em); }
+  em.on('ev', fn);
+  return () => { em?.off('ev', fn); };
+}
 
 /** La validación en curso ahora mismo, o null si no hay ninguna. */
 export function runningJob(): Job | null {
@@ -168,16 +203,30 @@ export function startRun(store: StoreConfig, blocks?: string[]): string {
     storeName: store.name,
     status: 'running',
     startedAt: new Date().toISOString(),
+    log: [],
   };
   jobs.set(runId, job);
-  void runStore(store, runId, blocks)
+  // Empuja un evento de progreso: al log del job (para suscriptores tardíos) y al emisor (SSE en vivo).
+  const emit = (ev: Omit<ProgressEvent, 't' | 'storeName'>) => {
+    const full: ProgressEvent = { t: Date.now(), storeName: store.name, ...ev };
+    job.log.push(full);
+    if (job.log.length > 400) job.log.shift();
+    emitters.get(runId)?.emit('ev', full);
+  };
+  void runStore(store, runId, blocks, emit)
     .then((result) => {
       job.status = 'done';
+      emit({ phase: 'done', ok: result.ok, detail: `${result.passed}/${result.total}` });
       void notifyRun(result); // avisa por Slack si falló (y hay webhook configurado)
     })
     .catch((e) => {
       job.status = 'error';
       job.error = e instanceof Error ? e.message : String(e);
+      emit({ phase: 'error', detail: job.error });
+    })
+    .finally(() => {
+      // Deja el emisor un rato para que un cliente que reconecta reciba el evento final, y límpialo.
+      setTimeout(() => emitters.delete(runId), 60000);
     });
   // Limpieza: no acumular jobs viejos en memoria indefinidamente.
   if (jobs.size > 50) {
@@ -251,7 +300,12 @@ async function measurePerf(page: import('playwright').Page, store: StoreConfig):
 
 /** Corre los checks contra una tienda y devuelve el informe (con capturas). `blocks` limita a esos
  *  bloques (HOME/COLECCIONES/PDP/OTROS); vacío/omitido = todos. */
-export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.now()}`, blocks?: string[]): Promise<RunResult> {
+export async function runStore(
+  store: StoreConfig,
+  runId = `${store.id}-${Date.now()}`,
+  blocks?: string[],
+  emit: (ev: Omit<ProgressEvent, 't' | 'storeName'>) => void = () => {},
+): Promise<RunResult> {
   const started = Date.now();
   // `blocks` puede traer nombres de bloque (HOME…) o labels de un check concreto (chip suelto).
   const activeChecks =
@@ -364,20 +418,28 @@ export async function runStore(store: StoreConfig, runId = `${store.id}-${Date.n
 
     // En móvil se saltan los checks `once` (no dependen de la vista: enlaces rotos, redirects, stock…).
     const vpChecks = vp.mobile ? activeChecks.filter((c) => !c.once) : activeChecks;
+    emit({ phase: 'viewport', viewport: vp.name, total: vpChecks.length });
 
     const vpItems: ResultItem[] = [];
     for (let i = 0; i < vpChecks.length; i++) {
-      vpItems.push(await runCheck(vpChecks[i], i));
+      const c = vpChecks[i];
+      emit({ phase: 'running', viewport: vp.name, index: i + 1, total: vpChecks.length, label: c.label });
+      const item = await runCheck(c, i);
+      vpItems.push(item);
+      emit({ phase: 'result', viewport: item.viewport, index: i + 1, total: vpChecks.length, label: item.label, ok: item.ok, detail: item.detail, level: item.level });
       await page.waitForTimeout(500); // pacing corto (Web Bot Auth ya da rate limits altos)
     }
 
     // Segunda pasada: reintenta SOLO los checks que fallaron (de verdad, no los ámbar) tras enfriar.
     const failedIdx = vpItems.map((it, i) => (!it.ok && it.level === 'check' ? i : -1)).filter((i) => i >= 0);
     if (failedIdx.length > 0 && failedIdx.length < vpChecks.length) {
+      emit({ phase: 'running', viewport: vp.name, label: `reintentando ${failedIdx.length} fallo(s)…`, retry: true });
       await page.waitForTimeout(5000);
       for (const i of failedIdx) {
+        emit({ phase: 'running', viewport: vp.name, index: i + 1, total: vpChecks.length, label: vpChecks[i].label, retry: true });
         const retry = await runCheck(vpChecks[i], i);
         if (retry.ok) vpItems[i] = retry;
+        emit({ phase: 'result', viewport: retry.viewport, index: i + 1, total: vpChecks.length, label: retry.label, ok: retry.ok, detail: retry.detail, level: retry.level, retry: true });
         await page.waitForTimeout(800);
       }
     }
