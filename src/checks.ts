@@ -158,17 +158,79 @@ async function countProducts(page: Page, url: string): Promise<number> {
   return n;
 }
 
-/** Localiza el botón de añadir al carrito (formulario estándar de Shopify o por texto). */
+/**
+ * Localiza el botón de añadir al carrito de forma robusta. En muchos temas (p. ej. el de Coolway)
+ * el botón NO es descendiente de `<form action="/cart/add">` sino que va dentro de un web component
+ * `<buy-buttons>` / `<product-form>` y se asocia al form por atributo `form=`. Además puede hidratar
+ * tarde. Por eso el selector antiguo (submit descendiente + getByRole, que ignora ocultos y no espera)
+ * fallaba en escritorio. Aquí: esperamos a la hidratación, cubrimos la asociación por `form=`, y
+ * DESCARTAMOS el botón "agotado/avísame" (que no es de añadir). Prioriza el visible y habilitado.
+ */
 async function findAddToCart(page: Page, store: StoreConfig): Promise<Locator | null> {
-  const form = page
-    .locator('form[action*="/cart/add"] button[type="submit"], form[action*="/cart/add"] [type="submit"]')
-    .first();
-  if (await form.count()) return form;
-  for (const t of store.addToCart) {
-    const b = page.getByRole('button', { name: new RegExp(t, 'i') }).first();
-    if (await b.count()) return b;
+  const ok = await page
+    .waitForFunction(
+      (texts) => {
+        const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const addRx = new RegExp(texts.map(esc).join('|'), 'i');
+        const badRx = /sold\s*out|agotad|notify me|av[ií]same|out of stock|unavailable/i;
+        const forms = Array.from(document.querySelectorAll('form[action*="/cart/add"]'));
+        const ids = new Set(forms.map((f) => f.id).filter(Boolean));
+        const isSubmit = (e: Element) =>
+          e.getAttribute('type') === 'submit' || e.getAttribute('name') === 'add';
+        const assoc = (e: Element) =>
+          !!e.closest('form[action*="/cart/add"]') ||
+          !!e.closest('buy-buttons,product-form') ||
+          ids.has(e.getAttribute('form') || '');
+        const txt = (e: Element) =>
+          `${e.textContent || ''} ${(e as HTMLInputElement).value || ''} ${e.getAttribute('aria-label') || ''}`;
+        const shown = (e: Element) =>
+          (e as HTMLElement).offsetParent !== null && !(e as HTMLButtonElement).disabled;
+        const all = Array.from(document.querySelectorAll('button,input[type=submit],[role=button]'));
+        const cands = all.filter(
+          (e) => !badRx.test(txt(e)) && ((isSubmit(e) && assoc(e)) || addRx.test(txt(e))),
+        );
+        const pick =
+          cands.find((e) => shown(e) && isSubmit(e) && assoc(e)) ||
+          cands.find((e) => shown(e) && addRx.test(txt(e))) ||
+          cands.find((e) => isSubmit(e) && assoc(e)) ||
+          cands[0] ||
+          null;
+        if (!pick) return false;
+        document.querySelectorAll('[data-smoke-atc]').forEach((e) => e.removeAttribute('data-smoke-atc'));
+        pick.setAttribute('data-smoke-atc', '1');
+        return true;
+      },
+      store.addToCart,
+      { timeout: 6000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  return ok ? page.locator('[data-smoke-atc]').first() : null;
+}
+
+/**
+ * Selecciona la primera talla/variante DISPONIBLE (no agotada) si hay selector, para que el botón
+ * pase a "añadir al carrito" — los temas muestran "agotado/avísame" cuando la variante no tiene stock.
+ */
+async function selectAvailableVariant(page: Page): Promise<void> {
+  try {
+    const clicked = await page.evaluate(() => {
+      const bad = /is-disabled|disabled|sold|agotad|unavailable|no-stock/i;
+      const labels = Array.from(document.querySelectorAll('label[for]'));
+      for (const lbl of labels) {
+        if (bad.test(lbl.className)) continue;
+        const input = document.getElementById(lbl.getAttribute('for') || '') as HTMLInputElement | null;
+        if (input && input.type === 'radio' && !input.disabled && !input.checked) {
+          (lbl as HTMLElement).click();
+          return true;
+        }
+      }
+      return false;
+    });
+    if (clicked) await page.waitForTimeout(700); // deja que el tema recomponga botón/variante
+  } catch {
+    /* sin selector de talla: seguimos */
   }
-  return null;
 }
 
 /**
@@ -230,6 +292,58 @@ async function cartLineItems(page: Page): Promise<number> {
   }
 }
 
+/**
+ * Suma de CANTIDADES en la página /cart. Más fiable que el nº de líneas para confirmar un "añadir":
+ * re-añadir la MISMA variante sube la cantidad de una línea existente pero no crea línea nueva.
+ * Devuelve -1 si no encuentra inputs de cantidad (para caer al conteo de líneas).
+ */
+async function cartTotalQty(page: Page): Promise<number> {
+  try {
+    return await page.evaluate(() => {
+      const sels = [
+        'input[name="updates[]"]',
+        'input[name^="updates"]',
+        'input[name*="quantity" i]',
+        '.quantity__input',
+        '[data-quantity-input]',
+      ];
+      for (const s of sels) {
+        const els = Array.from(document.querySelectorAll(s));
+        if (!els.length) continue;
+        let total = 0;
+        for (const el of els) {
+          const raw = (el as HTMLInputElement).value || el.getAttribute('value') || '0';
+          const v = parseInt(raw, 10);
+          if (!isNaN(v)) total += v;
+        }
+        return total;
+      }
+      return -1;
+    });
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * Vacía el carrito (best-effort) para que la prueba de "añadir" arranque de 0 y sea fiable:
+ * si no, el carrito arrastra items de checks/vistas anteriores y re-añadir la misma variante
+ * no cambia el nº de líneas (y el badge de este tema no es fiable). Si el endpoint está
+ * bloqueado por anti-bot, se ignora y se cae a la comparación por cantidad/líneas.
+ */
+async function clearCart(page: Page, store: StoreConfig): Promise<void> {
+  try {
+    await page.evaluate(async (base) => {
+      await fetch(base + '/cart/clear.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(() => undefined);
+    }, store.baseUrl);
+  } catch {
+    /* bloqueado → seguimos con el fallback por cantidad/líneas */
+  }
+}
+
 /** Descubre una colección y un producto reales del tema (DOM primero, sitemap de respaldo). */
 export async function discover(page: Page, store: StoreConfig): Promise<Discovery> {
   const d: Discovery = { collectionUrl: null, productUrl: null, prefix: '', how: '' };
@@ -255,17 +369,39 @@ export async function discover(page: Page, store: StoreConfig): Promise<Discover
     /* sigue */
   }
 
-  // 2) Producto: primer enlace a /products/ en la colección (o en la home).
+  // 2) Producto: elige el enlace de una CARD de la colección que NO esté agotada (así el test de
+  //    añadir prueba un producto comprable). Se decide EN la propia colección → sin visitar PDPs
+  //    (menos peticiones = menos throttling/anti-bot). Respaldo: el primer enlace a producto.
   try {
     if (d.collectionUrl) {
       await nav(page, d.collectionUrl);
       await dismissPopups(page);
     }
     const prod = await page.evaluate(() => {
-      const hrefs = Array.from(document.querySelectorAll('a[href*="/products/"]'))
-        .map((a) => a.getAttribute('href') || '')
-        .filter((h) => h.includes('/products/') && !/gift-card/i.test(h));
-      return hrefs[0] || null;
+      const soldSel =
+        '.sold-out, .badge--sold-out, [class*="sold-out"], [class*="soldout"], [data-sold-out]';
+      const soldRx = /\b(agotado|sold out)\b/i;
+      const linkOf = (c: Element) => {
+        const a = c.querySelector('a[href*="/products/"]');
+        const h = a ? a.getAttribute('href') || '' : '';
+        return h && !/gift-card/i.test(h) ? h : '';
+      };
+      const cards = Array.from(
+        document.querySelectorAll(
+          '[class*="product-card"], [class*="product-item"], .grid__item, li[class*="product"]',
+        ),
+      );
+      for (const c of cards) {
+        if (c.querySelector(soldSel) || soldRx.test(c.textContent || '')) continue; // agotada → salta
+        const h = linkOf(c);
+        if (h) return h;
+      }
+      // respaldo: cualquier enlace a producto (colección sin cards reconocibles)
+      return (
+        Array.from(document.querySelectorAll('a[href*="/products/"]'))
+          .map((a) => a.getAttribute('href') || '')
+          .find((h) => h.includes('/products/') && !/gift-card/i.test(h)) || null
+      );
     });
     if (prod) d.productUrl = abs(store, prod);
   } catch {
@@ -439,6 +575,7 @@ export const checks: Check[] = [
       if (!disco.productUrl) return { ok: false, detail: 'no se descubrió ningún producto en el tema' };
       await nav(page, disco.productUrl);
       await dismissPopups(page);
+      await selectAvailableVariant(page);
       const addBtn = await findAddToCart(page, store);
       const path = disco.productUrl.replace(store.baseUrl, '');
       return { ok: !!addBtn, detail: addBtn ? `${path} · con botón de añadir` : `${path} · sin botón de añadir` };
@@ -450,22 +587,38 @@ export const checks: Check[] = [
     desc: 'Pulsa «añadir al carrito» en la ficha y verifica que el contador del carrito aumenta.',
     run: async ({ page, store, disco }) => {
       if (!disco.productUrl) return { ok: false, detail: 'sin producto que probar (no descubierto)' };
+      // Arranca de un carrito vacío para que el "añadir" sea 0→1 y fiable (evita el arrastre de
+      // items de vistas/checks anteriores). Si el vaciado está bloqueado, la baseline lo capta igual.
+      const cartUrl = `${store.baseUrl}${disco.prefix}/cart`;
+      await clearCart(page, store);
+      await nav(page, cartUrl).catch(() => undefined);
+      await dismissPopups(page);
+      const beforeLines = await cartLineItems(page).catch(() => 0);
+      const beforeQty = await cartTotalQty(page);
       await nav(page, disco.productUrl);
       await dismissPopups(page);
+      await selectAvailableVariant(page);
       const before = await cartCountDom(page);
       const addBtn = await findAddToCart(page, store);
       if (!addBtn) return { ok: false, detail: 'no se encontró el botón de añadir' };
       await addBtn.click({ timeout: 8000 }).catch(() => undefined);
       await page.waitForTimeout(2500); // deja que el drawer/badge se actualicen
-      let after = await cartCountDom(page);
-      // Fallback: si el badge no refleja el cambio, míralo en la página /cart.
-      if (after <= before) {
-        await nav(page, `${store.baseUrl}/cart`);
-        await dismissPopups(page);
-        after = await cartLineItems(page);
-        return { ok: after > 0, detail: `badge ${before}→${await cartCountDom(page)} · /cart ${after} línea(s)` };
-      }
-      return { ok: after > before, detail: `carrito ${before} → ${after}` };
+      const after = await cartCountDom(page);
+      if (after > before) return { ok: true, detail: `carrito ${before} → ${after}` };
+      // Fallback: el badge no refleja el cambio → míralo en /cart. Preferimos CANTIDAD total
+      // (re-añadir la misma variante sube uds, no líneas); si no hay inputs de cantidad, líneas.
+      await nav(page, cartUrl);
+      await dismissPopups(page);
+      const afterQty = await cartTotalQty(page);
+      const afterLines = await cartLineItems(page);
+      const grew =
+        beforeQty >= 0 && afterQty >= 0 ? afterQty > beforeQty : afterLines > beforeLines;
+      return {
+        ok: grew,
+        detail:
+          `badge ${before}→${await cartCountDom(page)} · /cart ${beforeLines}→${afterLines} línea(s)` +
+          (afterQty >= 0 ? ` · ${beforeQty}→${afterQty} uds` : ''),
+      };
     },
   },
   {
