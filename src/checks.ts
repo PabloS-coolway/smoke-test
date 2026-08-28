@@ -74,6 +74,21 @@ async function dismissPopups(page: Page): Promise<void> {
       /* si no está, nada */
     }
   }
+  // Modal de geolocalización de Orbe ("Elige tu país de envío"): es un overlay a pantalla completa
+  // que TAPA la página e intercepta el clic de "añadir al carrito" → el test fallaba (badge 0→0).
+  // No hay botón de cierre fiable (una svg sin aria) y "Ir a la Tienda" puede redirigir de mercado,
+  // así que lo ocultamos por JS (para el smoke no necesitamos Orbe) y liberamos el scroll.
+  try {
+    await page.evaluate(() => {
+      document
+        .querySelectorAll('.md-app-embed, [class*="md-modal"], [class*="mdApp-modal"], [id*="orbe-modal"]')
+        .forEach((e) => (e as HTMLElement).style.setProperty('display', 'none', 'important'));
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    });
+  } catch {
+    /* si no está Orbe, nada */
+  }
   try {
     await page.keyboard.press('Escape');
   } catch {
