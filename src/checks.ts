@@ -624,7 +624,9 @@ export const checks: Check[] = [
           { timeout: 9000 },
         )
         .catch(() => null);
-      await addBtn.click({ timeout: 8000 }).catch(() => undefined);
+      // Click de DOM directo (no el de Playwright): dispara el handler del botón aunque un overlay
+      // residual lo tape — en US la click() de Playwright no llegaba a disparar el POST /cart/add.
+      await addBtn.evaluate((el) => (el as HTMLElement).click()).catch(() => undefined);
       const resp = await addResp;
       if (resp && resp.status() >= 200 && resp.status() < 400) {
         return { ok: true, detail: `añadido · POST /cart/add → ${resp.status()}` };
