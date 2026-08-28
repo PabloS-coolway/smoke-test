@@ -602,9 +602,9 @@ export const checks: Check[] = [
     desc: 'Pulsa «añadir al carrito» en la ficha y verifica que el contador del carrito aumenta.',
     run: async ({ page, store, disco }) => {
       if (!disco.productUrl) return { ok: false, detail: 'sin producto que probar (no descubierto)' };
-      // Arranca de un carrito vacío para que el "añadir" sea 0→1 y fiable (evita el arrastre de
-      // items de vistas/checks anteriores). Si el vaciado está bloqueado, la baseline lo capta igual.
       const cartUrl = `${store.baseUrl}${disco.prefix}/cart`;
+      // Baseline (solo para el fallback por conteo). En US /cart/clear.js y /cart.js están bloqueados a
+      // IPs de datacenter, por eso el conteo es poco fiable → la señal principal es la respuesta del add.
       await clearCart(page, store);
       await nav(page, cartUrl).catch(() => undefined);
       await dismissPopups(page);
@@ -616,12 +616,23 @@ export const checks: Check[] = [
       const before = await cartCountDom(page);
       const addBtn = await findAddToCart(page, store);
       if (!addBtn) return { ok: false, detail: 'no se encontró el botón de añadir' };
+      // Señal ROBUSTA: la respuesta del servidor al POST de /cart/add al pulsar. Confirma que el add se
+      // aceptó sin depender de vaciar el carrito, del badge ni del nº de líneas (frágiles/bloqueados en US).
+      const addResp = page
+        .waitForResponse(
+          (r) => /\/cart\/add(\.js)?(\?|$)/i.test(r.url()) && r.request().method() === 'POST',
+          { timeout: 9000 },
+        )
+        .catch(() => null);
       await addBtn.click({ timeout: 8000 }).catch(() => undefined);
-      await page.waitForTimeout(2500); // deja que el drawer/badge se actualicen
+      const resp = await addResp;
+      if (resp && resp.status() >= 200 && resp.status() < 400) {
+        return { ok: true, detail: `añadido · POST /cart/add → ${resp.status()}` };
+      }
+      // Fallback (submit sin AJAX o respuesta no capturada): compara el carrito como antes.
+      await page.waitForTimeout(2000);
       const after = await cartCountDom(page);
       if (after > before) return { ok: true, detail: `carrito ${before} → ${after}` };
-      // Fallback: el badge no refleja el cambio → míralo en /cart. Preferimos CANTIDAD total
-      // (re-añadir la misma variante sube uds, no líneas); si no hay inputs de cantidad, líneas.
       await nav(page, cartUrl);
       await dismissPopups(page);
       const afterQty = await cartTotalQty(page);
@@ -632,7 +643,8 @@ export const checks: Check[] = [
         ok: grew,
         detail:
           `badge ${before}→${await cartCountDom(page)} · /cart ${beforeLines}→${afterLines} línea(s)` +
-          (afterQty >= 0 ? ` · ${beforeQty}→${afterQty} uds` : ''),
+          (afterQty >= 0 ? ` · ${beforeQty}→${afterQty} uds` : '') +
+          (resp ? ` · add→${resp.status()}` : ' · sin respuesta add'),
       };
     },
   },
