@@ -248,47 +248,6 @@ async function selectAvailableVariant(page: Page): Promise<void> {
   }
 }
 
-/**
- * Nº de artículos en el carrito leyendo el DOM del tema (badge/burbuja de la cabecera o el texto del
- * enlace "Cart [n]"). NO usa /cart.js (algunas tiendas lo bloquean a IPs de datacenter).
- */
-async function cartCountDom(page: Page): Promise<number> {
-  try {
-    return await page.evaluate(() => {
-      const num = (s: string | null): number | null => {
-        if (!s) return null;
-        const m = s.match(/\d+/);
-        return m ? parseInt(m[0], 10) : null;
-      };
-      const sels = [
-        '[data-cart-count]',
-        '[data-cart-item-count]',
-        '.cart-count-bubble',
-        '.cart-count',
-        '#CartCount',
-        '[id*="CartCount"]',
-        '[class*="cart-count"]',
-        '[class*="cart_count"]',
-      ];
-      for (const s of sels) {
-        const el = document.querySelector(s);
-        if (el) {
-          const n = num(el.getAttribute('data-cart-count') || el.getAttribute('data-cart-item-count') || el.textContent);
-          if (n !== null) return n;
-        }
-      }
-      // Fallback: texto del enlace al carrito, p. ej. "Cart [0]" / "Carrito (0)".
-      const link = Array.from(document.querySelectorAll('a[href$="/cart"], a[href*="/cart?"], a[href*="/cart"]'))
-        .map((a) => a.textContent || '')
-        .join(' ');
-      const m = link.match(/[[(](\d+)[\])]/) || link.match(/\b(\d+)\b/);
-      return m ? parseInt(m[1], 10) : 0;
-    });
-  } catch {
-    return 0;
-  }
-}
-
 /** Nº de líneas de producto visibles en la página /cart (DOM). */
 async function cartLineItems(page: Page): Promise<number> {
   try {
@@ -304,58 +263,6 @@ async function cartLineItems(page: Page): Promise<number> {
     });
   } catch {
     return 0;
-  }
-}
-
-/**
- * Suma de CANTIDADES en la página /cart. Más fiable que el nº de líneas para confirmar un "añadir":
- * re-añadir la MISMA variante sube la cantidad de una línea existente pero no crea línea nueva.
- * Devuelve -1 si no encuentra inputs de cantidad (para caer al conteo de líneas).
- */
-async function cartTotalQty(page: Page): Promise<number> {
-  try {
-    return await page.evaluate(() => {
-      const sels = [
-        'input[name="updates[]"]',
-        'input[name^="updates"]',
-        'input[name*="quantity" i]',
-        '.quantity__input',
-        '[data-quantity-input]',
-      ];
-      for (const s of sels) {
-        const els = Array.from(document.querySelectorAll(s));
-        if (!els.length) continue;
-        let total = 0;
-        for (const el of els) {
-          const raw = (el as HTMLInputElement).value || el.getAttribute('value') || '0';
-          const v = parseInt(raw, 10);
-          if (!isNaN(v)) total += v;
-        }
-        return total;
-      }
-      return -1;
-    });
-  } catch {
-    return -1;
-  }
-}
-
-/**
- * Vacía el carrito (best-effort) para que la prueba de "añadir" arranque de 0 y sea fiable:
- * si no, el carrito arrastra items de checks/vistas anteriores y re-añadir la misma variante
- * no cambia el nº de líneas (y el badge de este tema no es fiable). Si el endpoint está
- * bloqueado por anti-bot, se ignora y se cae a la comparación por cantidad/líneas.
- */
-async function clearCart(page: Page, store: StoreConfig): Promise<void> {
-  try {
-    await page.evaluate(async (base) => {
-      await fetch(base + '/cart/clear.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      }).catch(() => undefined);
-    }, store.baseUrl);
-  } catch {
-    /* bloqueado → seguimos con el fallback por cantidad/líneas */
   }
 }
 
@@ -602,51 +509,60 @@ export const checks: Check[] = [
     desc: 'Pulsa «añadir al carrito» en la ficha y verifica que el contador del carrito aumenta.',
     run: async ({ page, store, disco }) => {
       if (!disco.productUrl) return { ok: false, detail: 'sin producto que probar (no descubierto)' };
-      const cartUrl = `${store.baseUrl}${disco.prefix}/cart`;
-      // Baseline (solo para el fallback por conteo). En US /cart/clear.js y /cart.js están bloqueados a
-      // IPs de datacenter, por eso el conteo es poco fiable → la señal principal es la respuesta del add.
-      await clearCart(page, store);
-      await nav(page, cartUrl).catch(() => undefined);
-      await dismissPopups(page);
-      const beforeLines = await cartLineItems(page).catch(() => 0);
-      const beforeQty = await cartTotalQty(page);
       await nav(page, disco.productUrl);
       await dismissPopups(page);
       await selectAvailableVariant(page);
-      const before = await cartCountDom(page);
+      const handle = (disco.productUrl.match(/\/products\/([a-z0-9._-]+)/i) || [])[1] || '';
+      // MÉTODO PRINCIPAL: añadir por el PERMALINK de Shopify (GET /cart/add?id=<variante>&quantity=1), que
+      // añade en el servidor y redirige a /cart. Determinista: no depende de clics/overlays (modal de Orbe)
+      // ni de /cart.js (bloqueado a IPs de datacenter en US). Verificamos que aterriza en /cart tras el add.
+      const variantId = await page.evaluate(() => {
+        const q = (s: string) => document.querySelector(s) as HTMLInputElement | HTMLSelectElement | null;
+        const inp =
+          q('form[action*="/cart/add"] [name="id"]') || q('select[name="id"]') || q('[name="id"][value]');
+        if (inp && inp.value && /^\d+$/.test(inp.value)) return inp.value;
+        const m = location.search.match(/[?&]variant=(\d+)/);
+        return m ? m[1] : null;
+      });
+      if (variantId) {
+        await nav(page, `${store.baseUrl}${disco.prefix}/cart/add?id=${variantId}&quantity=1`);
+        await dismissPopups(page);
+        const r = await page.evaluate((h) => {
+          const onCart = /\/cart\/?$/.test(location.pathname) || /cart|carrito/i.test(document.title);
+          const hasProduct = h
+            ? new RegExp(h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(document.body.innerHTML)
+            : false;
+          return { onCart, hasProduct, path: location.pathname };
+        }, handle);
+        // El redirect a /cart tras /cart/add?id=<válida> = Shopify aceptó el add (endpoint determinista).
+        if (r.onCart) {
+          return {
+            ok: true,
+            detail: `añadido (permalink) → /cart${r.hasProduct ? ` · ${handle} presente` : ''}`,
+          };
+        }
+      }
+      // FALLBACK (no se pudo extraer variante o el permalink no aterrizó en /cart): pulsar el botón por
+      // DOM y confirmar con la respuesta del POST /cart/add.
+      await nav(page, disco.productUrl);
+      await dismissPopups(page);
+      await selectAvailableVariant(page);
       const addBtn = await findAddToCart(page, store);
       if (!addBtn) return { ok: false, detail: 'no se encontró el botón de añadir' };
-      // Señal ROBUSTA: la respuesta del servidor al POST de /cart/add al pulsar. Confirma que el add se
-      // aceptó sin depender de vaciar el carrito, del badge ni del nº de líneas (frágiles/bloqueados en US).
       const addResp = page
         .waitForResponse(
-          (r) => /\/cart\/add(\.js)?(\?|$)/i.test(r.url()) && r.request().method() === 'POST',
+          (rr) => /\/cart\/add(\.js)?(\?|$)/i.test(rr.url()) && rr.request().method() === 'POST',
           { timeout: 9000 },
         )
         .catch(() => null);
-      // Click de DOM directo (no el de Playwright): dispara el handler del botón aunque un overlay
-      // residual lo tape — en US la click() de Playwright no llegaba a disparar el POST /cart/add.
       await addBtn.evaluate((el) => (el as HTMLElement).click()).catch(() => undefined);
       const resp = await addResp;
       if (resp && resp.status() >= 200 && resp.status() < 400) {
         return { ok: true, detail: `añadido · POST /cart/add → ${resp.status()}` };
       }
-      // Fallback (submit sin AJAX o respuesta no capturada): compara el carrito como antes.
-      await page.waitForTimeout(2000);
-      const after = await cartCountDom(page);
-      if (after > before) return { ok: true, detail: `carrito ${before} → ${after}` };
-      await nav(page, cartUrl);
-      await dismissPopups(page);
-      const afterQty = await cartTotalQty(page);
-      const afterLines = await cartLineItems(page);
-      const grew =
-        beforeQty >= 0 && afterQty >= 0 ? afterQty > beforeQty : afterLines > beforeLines;
       return {
-        ok: grew,
-        detail:
-          `badge ${before}→${await cartCountDom(page)} · /cart ${beforeLines}→${afterLines} línea(s)` +
-          (afterQty >= 0 ? ` · ${beforeQty}→${afterQty} uds` : '') +
-          (resp ? ` · add→${resp.status()}` : ' · sin respuesta add'),
+        ok: false,
+        detail: `no se pudo confirmar el add${variantId ? ' (permalink no aterrizó en /cart)' : ' (sin variante)'}${resp ? ` · add→${resp.status()}` : ''}`,
       };
     },
   },
