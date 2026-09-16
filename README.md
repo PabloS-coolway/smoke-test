@@ -112,3 +112,11 @@ tráfico del smoke test es mínimo). La EU no necesita proxy (va 8/8 directa des
 
 Abre la URL de la app → pulsa **Probar Europa** / **Probar EE. UU.** / **Probar todas** → espera ~1 min
 por tienda → lee el informe: **TODO OK** o **HAY FALLOS**, con el detalle y la captura de cada paso.
+
+## Devos CJ (afiliación)
+
+Pestaña **Devos CJ**: Catalina sube el CSV mensual de ventas de CJ y descarga el mismo CSV con **DEVO** (SI/NO) y
+**MONTO** (total reembolsado), cruzando cada `Order ID` (= ID interno del pedido) con Shopify Europa. Nada se
+guarda en el servidor. Necesita credencial de solo lectura en EU: `SHOPIFY_EU_DOMAIN` + `SHOPIFY_EU_TOKEN`
+(read_orders, read_returns) o la app de la organización (`SHOPIFY_APP_CLIENT_ID`/`SECRET`, token de 24 h que se
+renueva solo). Sin credencial, la pestaña lo avisa. Misma lógica que `coolway-shopify-tools/cj-devos.mjs`.

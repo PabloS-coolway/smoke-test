@@ -8,12 +8,13 @@ import { reloadSchedule, scheduleSummary, startScheduler } from './scheduler';
 import { getConfig, setConfig } from './config';
 import { storage } from './storage';
 import { authEnabled, clearSession, isAuthed, requireAuth, setSession, checkPassword } from './auth';
+import { credencialDisponible, enriquecerCSV } from './cj-devos';
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 8080);
 app.set('trust proxy', 1); // detrás del proxy de DO (para cookies secure / req.secure)
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // el CSV de CJ viaja en el cuerpo (texto)
 
 // --- Sesión / login (público) ----------------------------------------------
 /** Estado de sesión: si hace falta login y si esta petición ya está autenticada. */
@@ -389,6 +390,24 @@ app.post('/api/run', requireAuth, (req, res) => {
   const blocks = Array.isArray(body.blocks) ? body.blocks.filter((b) => SELECTORS.includes(b)) : undefined;
   const runId = startRun(store, blocks);
   return res.status(202).json({ runId, storeName: store.name });
+});
+
+// --- Devos CJ (afiliación): CSV mensual → mismo CSV + DEVO/MONTO cruzando con Shopify EU ----------
+app.get('/api/cj-devos/estado', requireAuth, (_req, res) => {
+  res.json({ disponible: credencialDisponible(), tienda: process.env.SHOPIFY_EU_DOMAIN ?? null });
+});
+
+app.post('/api/cj-devos', requireAuth, async (req, res) => {
+  const body = req.body as { csv?: string; orderCol?: string };
+  const csv = String(body?.csv ?? '');
+  if (!csv.trim()) return res.status(400).json({ error: 'Sube el CSV de CJ.' });
+  if (!credencialDisponible()) return res.status(503).json({ error: 'Falta la credencial de Shopify EU: hay que instalar la app de la organización en Coolway EU (scopes read_orders y read_returns) y poner sus claves en las variables de entorno.' });
+  try {
+    const r = await enriquecerCSV(csv, body?.orderCol || 'Order ID');
+    res.json(r); // el CSV no se guarda en ningún sitio: va y vuelve en memoria
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
 });
 
 // La UI (estática) va al final; su JS pedirá /api/session y mostrará el login si hace falta.

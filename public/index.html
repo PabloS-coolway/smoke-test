@@ -449,6 +449,7 @@
           <button class="nav-item" data-view="comparativa"><span class="n-ico"></span>Comparativa</button>
           <button class="nav-item" data-view="historial"><span class="n-ico"></span>Historial<span class="n-count" id="histCount"></span></button>
           <button class="nav-item" data-view="tiendas"><span class="n-ico"></span>Tiendas<span class="n-count" id="tiendasCount"></span></button>
+          <button class="nav-item" data-view="devos"><span class="n-ico"></span>Devos CJ</button>
           <button class="nav-item" data-view="ajustes"><span class="n-ico"></span>Ajustes</button>
         </nav>
         <button id="logout" class="logout" style="display:none">Cerrar sesión</button>
@@ -522,6 +523,31 @@
           </section>
 
           <!-- Vista: Ajustes -->
+          <!-- Vista: Devos CJ (afiliación) -->
+          <section class="view narrow" data-view="devos">
+            <h1>Devos CJ</h1>
+            <p class="lead">Sube el CSV de ventas del mes que manda CJ y te lo devuelvo con dos columnas más: <b>DEVO</b> (SI/NO) y <b>MONTO</b> (total reembolsado), cruzando cada pedido con Shopify Europa. Nada se guarda.</p>
+            <div id="devosEstado" class="sched-hint"></div>
+            <div class="sched">
+              <label class="sched-lbl" for="devosFile">CSV de CJ</label>
+              <input id="devosFile" type="file" accept=".csv,text/csv" />
+              <div class="sched-foot">
+                <button class="btn" id="devosRun" disabled>Cruzar con Shopify</button>
+                <span id="devosMsg" class="sched-hint"></span>
+              </div>
+            </div>
+            <div id="devosResultado" style="display:none">
+              <p class="section-h">Resultado</p>
+              <div class="kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
+                <div class="kpi"><div class="kn" id="devosPedidos">0</div><div class="kl">pedidos</div></div>
+                <div class="kpi"><div class="kn" id="devosDevos">0</div><div class="kl">con devolución</div></div>
+                <div class="kpi"><div class="kn" id="devosImporte">0 €</div><div class="kl">reembolsado</div></div>
+              </div>
+              <p id="devosAviso" class="sched-hint"></p>
+              <div class="sched-foot"><button class="btn" id="devosDescargar">Descargar CSV con DEVO/MONTO</button></div>
+            </div>
+          </section>
+
           <section class="view narrow" data-view="ajustes">
             <h1>Ajustes</h1>
             <p class="lead">Programación de validaciones automáticas y referencia de regresión visual. Los avisos viven ahora en la 🔔 de arriba.</p>
@@ -1481,6 +1507,44 @@
       window.showRun = showRun;
 
       init();
-    </script>
+    
+      // --- Devos CJ ---------------------------------------------------------------
+      (function devosCJ() {
+        const file = document.getElementById('devosFile');
+        const run = document.getElementById('devosRun');
+        const msg = document.getElementById('devosMsg');
+        const estado = document.getElementById('devosEstado');
+        const res = document.getElementById('devosResultado');
+        let csvOut = '', nombre = 'devos.csv';
+        if (!file || !run) return;
+        fetch('/api/cj-devos/estado').then((r) => r.json()).then((e) => {
+          estado.textContent = e.disponible ? `Conectado a Shopify Europa (${e.tienda}).` : 'Aún no hay credencial de Shopify Europa: hay que instalar la app de la organización en Coolway EU. Cuando esté, esto funciona solo.';
+          estado.style.color = e.disponible ? '' : 'var(--fail)';
+        }).catch(() => {});
+        file.onchange = () => { run.disabled = !file.files?.length; res.style.display = 'none'; msg.textContent = ''; };
+        run.onclick = async () => {
+          const f = file.files?.[0]; if (!f) return;
+          run.disabled = true; msg.textContent = 'Cruzando con Shopify…';
+          try {
+            const csv = await f.text();
+            const r = await fetch('/api/cj-devos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csv }) });
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || 'No se pudo procesar.');
+            csvOut = j.csv; nombre = f.name.replace(/\.csv$/i, '') + '-devos.csv';
+            document.getElementById('devosPedidos').textContent = j.pedidos;
+            document.getElementById('devosDevos').textContent = j.conDevolucion;
+            document.getElementById('devosImporte').textContent = j.importe.toFixed(2).replace('.', ',') + ' €';
+            document.getElementById('devosAviso').textContent = j.sinDatos ? `${j.sinDatos} pedidos no aparecen en Shopify (marcados con "?"): revísalos.` : 'Todos los pedidos encontrados en Shopify.';
+            res.style.display = ''; msg.textContent = '';
+          } catch (e) { msg.textContent = e.message; msg.style.color = 'var(--fail)'; }
+          finally { run.disabled = false; }
+        };
+        document.getElementById('devosDescargar').onclick = () => {
+          const url = URL.createObjectURL(new Blob(['\ufeff' + csvOut], { type: 'text/csv;charset=utf-8' }));
+          const a = document.createElement('a'); a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 10000);
+        };
+      })();
+</script>
   </body>
 </html>
